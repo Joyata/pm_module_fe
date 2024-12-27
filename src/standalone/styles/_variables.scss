@@ -1,0 +1,36 @@
+// Typography
+$font-size-base: 0.8rem !default;
+
+// Breakpoints
+$breakpoint-tv: 1920px; // Large TV screens
+$breakpoint-desktop: 1280px; // Desktop
+$breakpoint-ipad: 768px; // iPad mini
+$breakpoint-mobile: 320px; // Mobile
+
+// Sidebar
+$sidebar-nav-link-padding-y: 0.5rem !default;
+
+// Mixins
+@mixin mobile {
+  @media screen and (max-width: #{$breakpoint-ipad - 1}) {
+    @content;
+  }
+}
+
+@mixin ipad {
+  @media screen and (min-width: #{$breakpoint-ipad}) and (max-width: #{$breakpoint-desktop - 1}) {
+    @content;
+  }
+}
+
+@mixin desktop {
+  @media screen and (min-width: #{$breakpoint-desktop}) and (max-width: #{$breakpoint-tv - 1}) {
+    @content;
+  }
+}
+
+@mixin tv {
+  @media screen and (min-width: #{$breakpoint-tv}) {
+    @content;
+  }
+}
