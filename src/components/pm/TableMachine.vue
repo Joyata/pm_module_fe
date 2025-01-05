@@ -172,9 +172,9 @@
           <CModalTitle>Delete Machine</CModalTitle>
         </CModalHeader>
         <CModalBody
-          >Are you sure you want to delete this machine?
-          <div class="mt-2 text-danger">
-            This will also delete all associated parts.
+          >Are you sure you want to delete this part?
+          <div class="mt-2 text-center fw-bold">
+            {{ selectedMachine.machine_nm }} - {{ selectedMachine.part_nm }}
           </div>
         </CModalBody>
         <CModalFooter>
@@ -264,11 +264,12 @@ export default {
   },
 
   methods: {
-    ...mapActions("machines", ["updateMachine", "deleteMachine"]),
-
-    async handleRefresh() {
-      this.$emit("refresh");
-    },
+    ...mapActions("machines", [
+      "updateMachine",
+      "updatePart",
+      "deleteMachine",
+      "deletePart",
+    ]),
 
     openEditModal(item) {
       this.selectedMachine = { ...item };
@@ -276,6 +277,7 @@ export default {
         machine_nm: item.machine_nm,
         part_nm: item.part_nm,
         station_id: item.station_id,
+        part_id: item.part_id,
       };
       this.showEditModal = true;
     },
@@ -317,27 +319,57 @@ export default {
       this.isSubmitting = true;
 
       try {
-        const success = await this.updateMachine({
-          machineId: this.selectedMachine._id,
-          machineData: this.editMachine,
-        });
+        let updateSuccess = true;
 
-        if (success) {
-          this.closeEditModal();
-          await this.refreshData();
-          await Swal.fire({
-            title: "Success",
-            text: "Machine updated successfully",
-            icon: "success",
-            timer: 2000,
-            timerProgressBar: true,
+        // If machine name was changed, update machine first
+        if (this.editMachine.machine_nm !== this.selectedMachine.machine_nm) {
+          // Update machine name
+          const machineSuccess = await this.updateMachine({
+            machineId: this.selectedMachine._id,
+            machineData: {
+              _id: this.selectedMachine._id,
+              machine_nm: this.editMachine.machine_nm,
+            },
           });
+          updateSuccess = machineSuccess;
+
+          if (!machineSuccess) {
+            throw new Error("Failed to update machine name");
+          }
         }
+
+        // If part name was changed, update part
+        if (
+          this.editMachine.part_nm !== this.selectedMachine.part_nm &&
+          this.selectedMachine.part_id
+        ) {
+          const partSuccess = await this.updatePart({
+            partId: this.selectedMachine.part_id,
+            partData: {
+              _id: this.selectedMachine.part_id,
+              part_nm: this.editMachine.part_nm,
+            },
+          });
+
+          if (!partSuccess) {
+            throw new Error("Failed to update part name");
+          }
+        }
+
+        this.closeEditModal();
+        this.$emit("refresh");
+        await Swal.fire({
+          title: "Success",
+          text: "Updated successfully",
+          icon: "success",
+          timer: 2000,
+          timerProgressBar: true,
+        });
       } catch (error) {
-        console.error("Error updating machine:", error);
+        console.error("Error updating:", error);
         Swal.fire({
           title: "Error",
-          text: "Failed to update machine. Please try again.",
+          text: "Failed to update machine/part. Please try again.",
           icon: "error",
         });
       } finally {
@@ -357,23 +389,23 @@ export default {
     },
 
     async handleDeleteConfirm() {
-      if (!this.selectedMachine?._id) {
+      if (!this.selectedMachine?.part_id) {
         console.log("No machine selected or invalid machine ID");
         return;
       }
 
       // Store the ID before showing confirmation dialog
-      const machineId = this.selectedMachine._id;
+      const partId = this.selectedMachine.part_id;
 
       console.log("Selected machine for deletion:", {
-        id: machineId,
+        id: partId,
         machine: this.selectedMachine,
       });
 
       try {
         const result = await Swal.fire({
-          title: "Delete this Machine?",
-          text: "This action cannot be undone!",
+          title: "Delete Part?",
+          text: "Are you sure you want to delete this part?",
           icon: "warning",
           showCancelButton: true,
           confirmButtonText: "Delete",
@@ -382,16 +414,17 @@ export default {
 
         if (result.isConfirmed) {
           this.isSubmitting = true;
-          console.log("Proceeding with deletion of machine ID:", machineId);
-          const success = await this.deleteMachine(this.selectedMachine._id);
+
+          // Delete only the part
+          const success = await this.deletePart(partId);
 
           if (success) {
             console.log("Delete successful, closing modal");
             this.closeDeleteModal();
-            await this.refreshData();
+            this.$emit("refresh");
             Swal.fire({
               title: "Success",
-              text: "Machine deleted successfully",
+              text: "Part deleted successfully",
               icon: "success",
               timer: 2000,
               timerProgressBar: true,
@@ -402,7 +435,7 @@ export default {
         console.error("Error deleting machine:", error);
         Swal.fire({
           title: "Error",
-          text: "Failed to delete machine. Please try again.",
+          text: "Failed to delete machine/part. Please try again.",
           icon: "error",
         });
       } finally {

@@ -283,9 +283,15 @@ export default {
     },
 
     // Submit completed kanban work
-    async submitKanban({ dispatch }, { formData }) {
+    async submitKanban({ dispatch }, formData) {
       try {
         console.log("Submitting kanban with FormData");
+
+        // Log the formData entries for debugging
+        for (let pair of formData.entries()) {
+          console.log(pair[0], pair[1] instanceof Blob ? "Blob data" : pair[1]);
+        }
+
         const response = await api.post("/kanban/submit-kanban", formData, {
           headers: {
             "Content-Type": "multipart/form-data",

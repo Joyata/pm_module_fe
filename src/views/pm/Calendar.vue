@@ -182,7 +182,6 @@ import AssignTaskModal from "../../components/pm/AssignTaskModal.vue";
 import TaskDetailsModal from "../../components/pm/TaskDetailsModal.vue";
 import BulkOperationsModal from "../../components/pm/BulkOperationsModal.vue";
 import Swal from "sweetalert2";
-import { CButton } from "@coreui/vue";
 
 export default {
   name: "PMScheduler",

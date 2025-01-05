@@ -203,7 +203,12 @@
         <CModalHeader>
           <CModalTitle>Delete Sparepart</CModalTitle>
         </CModalHeader>
-        <CModalBody>Are you sure you want to delete this sparepart?</CModalBody>
+        <CModalBody
+          >Are you sure you want to delete this sparepart?
+          <div class="mt-2 text-center fw-bold">
+            {{ selectedSparepart.spare_part_nm }}
+          </div>
+        </CModalBody>
         <CModalFooter>
           <CButton color="secondary" @click="closeDeleteModal">Cancel</CButton>
           <CButton

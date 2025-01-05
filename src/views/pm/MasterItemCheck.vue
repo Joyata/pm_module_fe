@@ -27,12 +27,12 @@
                 <!-- <div v-if="loading">Loading...</div>
                     <div v-if="error">{{ error }}</div> -->
                 <TableItemCheck
-                  :itemchecks="itemchecks"
-                  :loading="loading"
-                  :spareParts="spareParts"
-                  :tools="tools"
+                  :itemchecks="allItemchecks"
+                  :loading="isLoading"
+                  :spareParts="sparePartsOptions"
+                  :tools="toolsOptions"
                   :stationId="stationId"
-                  @fetch-ItemChecks="fetchItemChecks"
+                  @fetch-item-checks="handleFetchItemChecks"
                 ></TableItemCheck>
               </div>
             </CCol>
@@ -55,6 +55,8 @@
             v-model="newItemCheck.itemcheck_nm"
             label="Item Check Name"
             placeholder="Enter item check name"
+            :state="isValidItemCheckName"
+            :feedback="itemCheckNameFeedback"
             required
           />
           <CFormInput
@@ -62,6 +64,8 @@
             v-model="newItemCheck.std"
             label="Standard"
             placeholder="Enter standard value"
+            :state="isValidStandard"
+            :feedback="standardFeedback"
             required
           />
           <CRow>
@@ -91,6 +95,8 @@
                 v-model="newItemCheck.unit"
                 label="Unit"
                 placeholder="Enter unit"
+                :state="isValidUnit"
+                :feedback="unitFeedback"
                 :required="newItemCheck.min || newItemCheck.max"
               />
             </CCol>
@@ -99,6 +105,8 @@
             class="mb-3"
             v-model="newItemCheck.period"
             label="Period"
+            :state="isValidPeriod"
+            :feedback="periodFeedback"
             required
             :options="[
               { label: 'Select period', value: '' },
@@ -112,22 +120,25 @@
             class="mb-3"
             v-model="newItemCheck.spare_part_id"
             label="Spare Part"
-            :options="spareParts"
+            :options="sparePartsOptions"
           />
           <CFormSelect
             class="mb-3"
             v-model="newItemCheck.tools_id"
             label="Tool"
-            :options="tools"
+            :options="toolsOptions"
           />
         </CCol>
       </CRow>
     </CModalBody>
     <CModalFooter>
       <CButton color="secondary" @click="closeAddModal">Close</CButton>
-      <CButton color="primary" @click="addItemCheck" :disabled="loading">{{
-        loading ? "Adding..." : "Add"
-      }}</CButton>
+      <CButton
+        color="primary"
+        @click="handleAddItemCheck"
+        :disabled="!isFormValid || isLoading"
+        >{{ isLoading ? "Adding..." : "Add" }}</CButton
+      >
     </CModalFooter>
   </CModal>
 </template>
@@ -136,17 +147,11 @@
 import TableItemCheck from "../../components/pm/TableItemCheck.vue";
 import Swal from "sweetalert2";
 import router from "../../router";
-import api from "../../apis/CommonAPI";
 import { mapState, mapGetters, mapActions } from "vuex";
 
 export default {
   name: "PMMasterItemCheck",
-  props: {
-    user: {
-      type: Object,
-      required: true,
-    },
-  },
+
   components: {
     TableItemCheck,
   },
@@ -165,29 +170,90 @@ export default {
         tools_id: null,
         part_id: "",
       },
-      itemchecks: [],
-      spareParts: [{ label: "Select spare part", value: "" }],
-      tools: [{ label: "Select tool", value: "" }],
       stationId: "",
       partId: "",
       partNm: "",
       machineNm: "",
-      loading: false,
-      error: null,
     };
   },
 
   computed: {
     ...mapState("auth", ["user"]),
+    ...mapState("itemchecks", ["loading"]),
+    ...mapGetters("itemchecks", [
+      "allItemchecks",
+      "allTools",
+      "allSpareParts",
+      "isLoading",
+    ]),
+
+    sparePartsOptions() {
+      return [
+        { label: "Select spare part", value: "" },
+        ...this.allSpareParts.map((part) => ({
+          label: part.spare_part_nm,
+          value: part._id,
+        })),
+      ];
+    },
+
+    toolsOptions() {
+      return [
+        { label: "Select tool", value: "" },
+        ...this.allTools.map((tool) => ({
+          label: tool.tool_nm,
+          value: tool._id,
+        })),
+      ];
+    },
+
+    isValidItemCheckName() {
+      return this.newItemCheck.itemcheck_nm?.trim().length > 0;
+    },
+
+    itemCheckNameFeedback() {
+      if (!this.isValidItemCheckName) return "Item check name is required";
+      return "";
+    },
+
+    isValidStandard() {
+      return this.newItemCheck.std?.trim().length > 0;
+    },
+
+    standardFeedback() {
+      if (!this.isValidStandard) return "Standard is required";
+      return "";
+    },
+
+    isValidPeriod() {
+      return this.newItemCheck.period?.trim().length > 0;
+    },
+
+    periodFeedback() {
+      if (!this.isValidPeriod) return "Period is required";
+      return "";
+    },
+
+    isValidUnit() {
+      if (this.newItemCheck.min || this.newItemCheck.max) {
+        return this.newItemCheck.unit?.trim().length > 0;
+      }
+      return true;
+    },
+
+    unitFeedback() {
+      if (!this.isValidUnit) return "Unit is required when min or max is set";
+      return "";
+    },
 
     isFormValid() {
-      const { itemcheck_nm, std, period } = this.newItemCheck;
-      const hasRequiredFields = itemcheck_nm && std && period;
+      const hasRequiredFields =
+        this.isValidItemCheckName && this.isValidStandard && this.isValidPeriod;
 
       // If min or max is provided, unit is required
       if (
         (this.newItemCheck.min || this.newItemCheck.max) &&
-        !this.newItemCheck.unit
+        !this.isValidUnit
       ) {
         return false;
       }
@@ -200,18 +266,19 @@ export default {
     this.partId = this.$route.params.part_id;
     this.partNm = this.$route.query.part_nm;
     this.machineNm = this.$route.query.machine_nm;
-    const machineId = this.$route.query.machine_id;
-    const stationId = this.$route.query.station_id;
+    this.machineId = this.$route.query.machine_id;
+    this.stationId = this.$route.query.station_id;
+
     console.log("Component created with:", {
-      machineId,
+      machineId: this.$route.query.machine_id,
       machineNm: this.machineNm,
       partId: this.partId,
       partNm: this.partNm,
-      stationId,
+      stationId: this.stationId,
     });
 
-    // Validate we have required IDs
-    if (!this.partId || !machineId || !stationId) {
+    // Validate required IDs
+    if (!this.partId || !this.$route.query.machine_id || !this.stationId) {
       Swal.fire({
         title: "Error",
         text: "Missing required parameters",
@@ -220,14 +287,40 @@ export default {
       this.$router.back();
       return;
     }
-    await Promise.all([
-      this.fetchItemChecks(),
-      this.fetchSpareParts(),
-      this.fetchTools(),
-    ]);
+
+    // Initialize data
+    await this.initializeData();
   },
 
   methods: {
+    ...mapActions("itemchecks", [
+      "fetchItemchecksByPart",
+      "fetchTools",
+      "fetchSpareParts",
+      "createItemcheck",
+    ]),
+
+    async initializeData() {
+      try {
+        await Promise.all([
+          this.handleFetchItemChecks(),
+          this.fetchTools(this.stationId),
+          this.fetchSpareParts(this.stationId),
+        ]);
+      } catch (error) {
+        console.error("Error initializing data:", error);
+        Swal.fire({
+          title: "Error",
+          text: "Failed to initialize data",
+          icon: "error",
+        });
+      }
+    },
+
+    async handleFetchItemChecks() {
+      await this.fetchItemchecksByPart(this.partId);
+    },
+
     openAddModal() {
       this.showAddModal = true;
       this.newItemCheck.part_id = this.partId;
@@ -252,7 +345,7 @@ export default {
       };
     },
 
-    async addItemCheck() {
+    async handleAddItemCheck() {
       if (!this.isFormValid) {
         Swal.fire({
           title: "Error",
@@ -262,7 +355,6 @@ export default {
         return;
       }
 
-      this.loading = true;
       try {
         // Get user from localStorage
         const user = JSON.parse(localStorage.getItem("user"));
@@ -280,13 +372,10 @@ export default {
 
         console.log("Payload:", payload);
 
-        const response = await api.post("/itemcheck/add-itemcheck", payload);
-        console.log("Response:", response);
+        const success = await this.createItemcheck(payload);
 
-        if (response?.data?.status === 200) {
-          await this.fetchItemChecks();
+        if (success) {
           this.closeAddModal();
-
           Swal.fire({
             title: "Success",
             text: "Item check added successfully",
@@ -294,106 +383,15 @@ export default {
             timer: 2000,
             timerProgressBar: true,
           });
+          await this.handleFetchItemChecks();
         }
       } catch (error) {
         console.error("Error adding item check:", error);
         Swal.fire({
           title: "Error",
-          text: error.response?.data?.message || "Failed to add item check",
+          text: "Failed to add item check. Please try again.",
           icon: "error",
         });
-      } finally {
-        this.loading = false;
-      }
-    },
-
-    async fetchItemChecks() {
-      this.loading = true;
-
-      try {
-        const partId = this.$route.params.part_id;
-
-        if (!partId) {
-          throw new Error("Part ID is required");
-        }
-
-        console.log("Request part_id:", {
-          part_id: partId,
-        });
-
-        const response = await api.get(
-          `/itemcheck/list-itemcheck?part_id=${partId}`,
-          "?"
-        );
-
-        if (response?.data?.status === 200) {
-          console.log("Response data:", response.data);
-          this.itemchecks = response.data.data;
-          console.log("Parsed itemchecks:", this.itemchecks);
-        } else {
-          throw new Error(
-            response?.data?.message || "Failed to fetch item checks"
-          );
-        }
-      } catch (error) {
-        console.error("Error fetching Item Checks: ", error);
-        Swal.fire({
-          title: "Error",
-          text:
-            error.message || "Failed to load Item Checks. Please try again.",
-          icon: "error",
-        });
-      } finally {
-        this.loading = false;
-      }
-    },
-
-    async fetchSpareParts() {
-      const stationId = this.$route.query.station_id;
-
-      try {
-        const response = await api.get(
-          `/itemcheck/list-sparepart?station_id=${stationId}`,
-          "?"
-        );
-        if (response.data?.status === 200) {
-          this.spareParts = [
-            { label: "Select spare part", value: "" },
-            ...response.data.data.map((part) => ({
-              label: `${part.spare_part_nm}`,
-              value: part._id,
-            })),
-          ];
-        }
-      } catch (error) {
-        console.error("Error fetching spare parts:", error);
-        Swal.fire({
-          title: "Error",
-          text: "Failed to load spare parts",
-          icon: "error",
-        });
-      }
-    },
-
-    async fetchTools() {
-      const stationId = this.$route.query.station_id;
-
-      try {
-        const response = await api.get(
-          `/itemcheck/list-tool?station_id=${stationId}`,
-          "?"
-        );
-        if (response.data?.status === 200) {
-          this.tools = [
-            { label: "Select tool", value: "" },
-            ...response.data.data.map((tool) => ({
-              label: `${tool.tool_nm}`,
-              value: tool._id,
-            })),
-          ];
-        }
-      } catch (error) {
-        console.error("Error fetching tools:", error);
       }
     },
 

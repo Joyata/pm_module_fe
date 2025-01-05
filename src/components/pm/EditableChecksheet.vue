@@ -120,7 +120,7 @@
                   <CTableDataCell>{{ item.unit }}</CTableDataCell>
 
                   <!-- Input Cell -->
-                  <CTableDataCell>
+                  <CTableDataCell style="min-width: 70px">
                     <CFormInput
                       v-if="item.min !== undefined && item.max !== undefined"
                       type="text"
@@ -352,13 +352,22 @@ export default {
       return part ? part.part_nm : "Loading...";
     },
 
+    updateProgressBar(progressBar, value) {
+      if (progressBar) {
+        progressBar.style.width = `${value}%`;
+        progressBar.style.transition = "width 0.3s ease-in-out";
+      }
+    },
+
     async submitChecksheet() {
+      let loadingDialog;
       try {
-        console.log("Starting submitChecksheet...");
+        console.log("🚀 Starting submitChecksheet process");
         const validation = this.validateSubmission();
-        console.log("Validation result:", validation);
+        console.log("🔍 Validation result:", validation);
 
         if (!validation.isValid) {
+          console.log("❌ Validation failed:", validation.errors);
           Swal.fire({
             icon: "error",
             title: "Validation Failed",
@@ -367,112 +376,190 @@ export default {
           return;
         }
 
-        // Show loading dialog
+        console.log("📊 Setting up loading dialog variables");
         this.isSubmitting = true;
-        const loadingDialog = Swal.fire({
+
+        // Create unique IDs for elements
+        const progressBarId = `progress-bar-${Date.now()}`;
+        const progressTextId = `progress-text-${Date.now()}`;
+
+        console.log("Creating dialog HTML with IDs:", {
+          progressBarId,
+          progressTextId,
+        });
+
+        const progressHtml = `
+      <div class="submission-progress">
+        <div id="${progressTextId}" class="progress-text">Preparing data...</div>
+        <div class="progress">
+          <div id="${progressBarId}" class="progress-bar" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100" style="width: 0%"></div>
+        </div>
+      </div>
+    `;
+
+        console.log("Opening Swal dialog");
+        loadingDialog = Swal.fire({
           title: "Submitting Checksheet",
-          html: `
-        <div class="submission-progress">
-          <div class="progress-text">Processing photos and data...</div>
-          <div class="progress">
-            <div class="progress-bar" role="progressbar" style="width: 0%"></div>
-            </div>
-            </div>
-        `,
+          html: progressHtml,
           allowOutsideClick: false,
           allowEscapeKey: false,
           showConfirmButton: false,
+          willOpen: () => {
+            console.log("Dialog willOpen callback triggered");
+          },
           didOpen: () => {
-            Swal.showLoading();
+            console.log("Dialog didOpen callback triggered");
+            try {
+              console.log("Showing loading state");
+              Swal.showLoading();
+              console.log("Loading state shown");
+            } catch (error) {
+              console.error("Error in didOpen:", error);
+            }
           },
         });
+
+        // Add a small delay to ensure dialog is rendered
+        console.log("Waiting for dialog to render");
+        await new Promise((resolve) => setTimeout(resolve, 500));
+
+        // Get progress elements
+        console.log("Getting progress elements by ID");
+        const progressBar = document.getElementById(progressBarId);
+        const progressText = document.getElementById(progressTextId);
+
+        // Detailed element checks
+        console.log("Checking progress elements:", {
+          progressBarId,
+          progressTextId,
+          progressBarFound: progressBar ? "Found" : "Not found",
+          progressTextFound: progressText ? "Found" : "Not found",
+          progressBarElement: progressBar,
+          progressTextElement: progressText,
+          allProgressBars: document.querySelectorAll(".progress-bar"),
+          allProgressTexts: document.querySelectorAll(".progress-text"),
+        });
+
+        // Verify dialog is in DOM
+        const dialogElement = document.querySelector(".swal2-container");
+        console.log("Dialog element check:", {
+          found: !!dialogElement,
+          classList: dialogElement?.classList?.toString(),
+          children: dialogElement?.children?.length,
+        });
+
+        // Create progress updater with error handling
+        const updateProgress = (percent, text) => {
+          console.log(
+            `Attempting to update progress: ${percent}%, text: ${text}`
+          );
+          try {
+            const currentBar = document.getElementById(progressBarId);
+            const currentText = document.getElementById(progressTextId);
+
+            if (currentBar) {
+              currentBar.style.width = `${percent}%`;
+              currentBar.setAttribute("aria-valuenow", percent);
+              console.log(`Progress bar updated to ${percent}%`);
+            } else {
+              console.error(`Progress bar with ID ${progressBarId} not found`);
+            }
+
+            if (currentText && text) {
+              currentText.textContent = text;
+              console.log(`Progress text updated to: ${text}`);
+            } else if (!currentText) {
+              console.error(
+                `Progress text with ID ${progressTextId} not found`
+              );
+            }
+          } catch (error) {
+            console.error("Error updating progress:", error);
+          }
+        };
+
+        // Initial progress
+        console.log("Starting initial progress");
+        updateProgress(5, "Starting submission process...");
+        await new Promise((resolve) => setTimeout(resolve, 300));
 
         const formData = new FormData();
-
-        // Log basic information
-        console.log("Selected Activity:", this.selectedActivity);
-        console.log("KanbanId:", this.selectedActivity.kanbanId);
-        console.log("WorkOrderId:", this.selectedActivity.workOrderId);
-        console.log("AssignedTo:", this.selectedActivity.assignedTo);
+        const totalItems = this.checkItems.length;
+        console.log(`Processing ${totalItems} items`);
 
         // Add basic information
-        formData.append("kanban_id", this.selectedActivity.kanbanId);
-        formData.append("work_order_id", this.selectedActivity.workOrderId);
-        formData.append("created_by", this.selectedActivity.assignedTo);
-        formData.append("status", "COMPLETED");
+        updateProgress(10, "Adding basic information...");
+        const basicInfo = {
+          kanban_id: this.selectedActivity.kanbanId,
+          work_order_id: this.selectedActivity.workOrderId,
+          created_by: this.selectedActivity.assignedTo,
+          status: "COMPLETED",
+        };
 
-        // Log FormData contents before processing items
-        console.log("Initial FormData entries:");
-        for (let pair of formData.entries()) {
-          console.log(pair[0] + ": " + pair[1]);
-        }
-
-        // Process each item with progress updates
-
-        const totalItems = this.checkItems.length;
-        console.log("Total items to process:", totalItems);
-
-        for (let index = 0; index < totalItems; index++) {
-          const item = this.checkItems[index];
-          console.log(`Processing item ${index + 1}:`, item);
-
-          formData.append("itemcheck_id[]", item._id);
-
-          // Handle value based on item type
-          const value =
-            item.min !== undefined && item.max !== undefined
-              ? String(item.inputValue)
-              : String(item.result);
-          formData.append("value[]", value);
-          console.log(`Item ${index + 1} value:`, value);
-
-          // Handle photo
-          if (item.photo) {
-            console.log(`Converting photo for item ${index + 1}`);
-            const photoBlob = this.dataURLtoBlob(item.photo);
-            console.log("Photo blob created:", photoBlob);
-            formData.append("file", photoBlob, `${Date.now()}_${index}.jpg`);
-          }
-
-          // Update progress
-          this.submitProgress = Math.round(((index + 1) / totalItems) * 100);
-          console.log("Progress:", this.submitProgress + "%");
-
-          const progressBar =
-            Swal.getHtmlContainer()?.querySelector(".progress-bar");
-          if (progressBar) {
-            progressBar.style.width = `${this.submitProgress}%`;
-          }
-        }
-
-        // formData.append("notes", String(notes));
-
-        // Log final FormData contents
-        console.log("Final FormData entries:");
-        for (let pair of formData.entries()) {
-          console.log(
-            pair[0] + ": " + (pair[1] instanceof Blob ? "Blob data" : pair[1])
-          );
-        }
-        console.log("FormData sent:", formData);
-        // Submit using store action instead of direct API call
-        console.log("Dispatching submitKanban action...");
-        const success = await this.$store.dispatch("activities/submitKanban", {
-          formData,
-          options: {
-            headers: {
-              "Content-Type": "multipart/form-data",
-            },
-          },
+        Object.entries(basicInfo).forEach(([key, value]) => {
+          formData.append(key, value);
+          console.log(`Added ${key}: ${value}`);
         });
 
-        console.log("Submit result:", success);
+        // Process items
+        const progressPerItem = 70 / totalItems;
+        for (let index = 0; index < totalItems; index++) {
+          const item = this.checkItems[index];
+          const currentProgress = 20 + index * progressPerItem;
+
+          updateProgress(
+            currentProgress,
+            `Processing item ${index + 1} of ${totalItems}...`
+          );
+
+          // Process item data
+          formData.append("itemcheck_id[]", item._id);
+
+          const value =
+            item.min !== undefined && item.max !== undefined
+              ? String(item.inputValue || "")
+              : String(item.result || "NG");
+          formData.append("value[]", value);
+
+          const result = this.getResult(item);
+          formData.append("result[]", result);
+
+          // Process photo if exists
+          if (item.photo) {
+            updateProgress(
+              currentProgress + progressPerItem / 2,
+              `Processing photo for item ${index + 1}...`
+            );
+
+            try {
+              const photoBlob = this.dataURLtoBlob(item.photo);
+              formData.append("file", photoBlob, `${Date.now()}_${index}.jpg`);
+              console.log(`Photo added for item ${index + 1}`);
+            } catch (error) {
+              console.error(
+                `Photo processing error for item ${index + 1}:`,
+                error
+              );
+              throw error;
+            }
+          }
+
+          await new Promise((resolve) => setTimeout(resolve, 200));
+        }
+
+        // Submit data
+        updateProgress(90, "Submitting to server...");
+        console.log("Dispatching submitKanban action");
+        const success = await this.$store.dispatch(
+          "activities/submitKanban",
+          formData
+        );
 
         if (success) {
-          // Close loading dialog
-          loadingDialog.close();
+          updateProgress(100, "Submission complete!");
+          await new Promise((resolve) => setTimeout(resolve, 300));
 
-          // Show success message
+          loadingDialog.close();
           await Swal.fire({
             icon: "success",
             title: "Checksheet Submitted",
@@ -483,30 +570,30 @@ export default {
           });
 
           this.goBack();
+        } else {
+          throw new Error("Submission failed");
         }
       } catch (error) {
         console.error("Submission error:", error);
         console.error("Error details:", {
+          name: error.name,
           message: error.message,
           response: error.response?.data,
           status: error.response?.status,
-          stack: error.stack,
         });
 
-        // Close loading dialog
-        loadingDialog.close();
+        if (loadingDialog) loadingDialog.close();
 
-        // Show error message
         Swal.fire({
           icon: "error",
           title: "Submission Failed",
-          text: error.response?.data?.message || "Failed to submit checksheet",
+          text: error.message || "Failed to submit checksheet",
           confirmButtonText: "Try Again",
         });
       } finally {
-        console.log("Submission process completed");
         this.isSubmitting = false;
         this.submitProgress = 0;
+        console.log("Submission process completed");
       }
     },
 
@@ -937,18 +1024,52 @@ $transition-base: all 0.2s ease-in-out;
     margin-bottom: 1rem;
     color: #6c757d;
     font-size: 0.9rem;
+    text-align: center;
+    min-height: 20px;
   }
 
   .progress {
-    height: 4px;
-    border-radius: 2px;
+    height: 6px;
+    border-radius: 3px;
     background-color: #e9ecef;
     overflow: hidden;
+    margin: 0.5rem 0;
   }
 
   .progress-bar {
     background-color: #0d6efd;
-    transition: width 0.3s ease;
+    transition: width 0.3s ease-in-out;
+    position: relative;
+
+    &::after {
+      content: "";
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: linear-gradient(
+        90deg,
+        rgba(255, 255, 255, 0.15) 25%,
+        transparent 25%,
+        transparent 50%,
+        rgba(255, 255, 255, 0.15) 50%,
+        rgba(255, 255, 255, 0.15) 75%,
+        transparent 75%,
+        transparent 100%
+      );
+      background-size: 1rem 1rem;
+      animation: progress-bar-stripes 1s linear infinite;
+    }
+  }
+}
+
+@keyframes progress-bar-stripes {
+  from {
+    background-position: 1rem 0;
+  }
+  to {
+    background-position: 0 0;
   }
 }
 

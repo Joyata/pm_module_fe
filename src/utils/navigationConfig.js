@@ -21,13 +21,13 @@ const navigationConfig = {
     //   icon: "cilTask",
     //   parentId: "ROOT",
     // },
-    {
-      component: "CNavItem",
-      to: "/pm/activity-tm2",
-      name: "Activity Board - TM",
-      icon: "cilTask",
-      parentId: "ROOT",
-    },
+    // {
+    //   component: "CNavItem",
+    //   to: "/pm/activity-tm2",
+    //   name: "Activity Board - TM",
+    //   icon: "cilTask",
+    //   parentId: "ROOT",
+    // },
     // {
     //   component: "CNavItem",
     //   to: "/pm/activity-tl",
@@ -35,13 +35,13 @@ const navigationConfig = {
     //   icon: "cilTask",
     //   parentId: "ROOT",
     // },
-    {
-      component: "CNavItem",
-      to: "/pm/activity-tl2",
-      name: "Activity Board - TL",
-      icon: "cilTask",
-      parentId: "ROOT",
-    },
+    // {
+    //   component: "CNavItem",
+    //   to: "/pm/activity-tl2",
+    //   name: "Activity Board - TL",
+    //   icon: "cilTask",
+    //   parentId: "ROOT",
+    // },
     {
       component: "CNavItem",
       to: "/pm/calendar",

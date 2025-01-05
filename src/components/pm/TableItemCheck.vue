@@ -76,12 +76,16 @@
             class="mb-3"
             v-model="selectedItemCheck.itemcheck_nm"
             label="Item Check Name"
+            :state="isValidItemCheckName"
+            :feedback="itemCheckNameFeedback"
             required
           />
           <CFormInput
             class="mb-3"
             v-model="selectedItemCheck.std"
             label="Standard"
+            :state="isValidStandard"
+            :feedback="standardFeedback"
             required
           />
           <CRow>
@@ -108,6 +112,8 @@
                 class="mb-3"
                 v-model="selectedItemCheck.unit"
                 label="Unit"
+                :state="isValidUnit"
+                :feedback="unitFeedback"
                 :required="selectedItemCheck.min || selectedItemCheck.max"
               />
             </CCol>
@@ -116,6 +122,8 @@
             class="mb-3"
             v-model="selectedItemCheck.period"
             label="Period"
+            :state="isValidPeriod"
+            :feedback="periodFeedback"
             required
             :options="[
               { label: 'Select period', value: '' },
@@ -133,7 +141,7 @@
           />
           <CFormSelect
             class="mb-3"
-            v-model="selectedItemCheck.tools"
+            v-model="selectedItemCheck.tools_id"
             label="Tool"
             :options="tools"
           />
@@ -141,7 +149,12 @@
       </CModalBody>
       <CModalFooter>
         <CButton color="secondary" @click="closeEditModal"> Close </CButton>
-        <CButton color="primary" @click="editItemCheck">Update</CButton>
+        <CButton
+          color="primary"
+          @click="handleEditItemCheck"
+          :disabled="!isFormValid || isSubmitting"
+          >{{ isSubmitting ? "Updating..." : "Update" }}</CButton
+        >
       </CModalFooter>
     </CModal>
   </Teleport>
@@ -152,10 +165,20 @@
       <CModalHeader>
         <CModalTitle>Delete Item Check</CModalTitle>
       </CModalHeader>
-      <CModalBody>Are you sure you want to delete this Item Check?</CModalBody>
+      <CModalBody
+        >Are you sure you want to delete this Item Check?
+        <div class="mt-2 text-center fw-bold">
+          {{ selectedItemCheck.itemcheck_nm }}
+        </div>
+      </CModalBody>
       <CModalFooter>
         <CButton color="secondary" @click="closeDeleteModal">Close</CButton>
-        <CButton color="primary" @click="deleteItemCheck">Delete</CButton>
+        <CButton
+          color="primary"
+          @click="handleDeleteItemCheck"
+          :disabled="isSubmitting"
+          >{{ isSubmitting ? "Deleting..." : "Delete" }}</CButton
+        >
       </CModalFooter>
     </CModal>
   </Teleport>
@@ -163,7 +186,7 @@
 
 <script>
 import Swal from "sweetalert2";
-import api from "../../apis/CommonAPI";
+import { mapState, mapActions, mapGetters } from "vuex";
 
 export default {
   name: "TableItemCheck",
@@ -190,12 +213,13 @@ export default {
     },
   },
 
-  // emits: ["fetch-ItemChecks"],
+  emits: ["fetch-item-checks"],
 
   data() {
     return {
       showEditModal: false,
       showDeleteModal: false,
+      isSubmitting: false,
       selectedItemCheck: {
         _id: "",
         itemcheck_nm: "",
@@ -212,15 +236,53 @@ export default {
   },
 
   computed: {
+    isValidItemCheckName() {
+      return this.selectedItemCheck.itemcheck_nm?.trim().length > 0;
+    },
+
+    itemCheckNameFeedback() {
+      if (!this.isValidItemCheckName) return "Itemcheck name is required";
+      return "";
+    },
+
+    isValidStandard() {
+      return this.selectedItemCheck.std?.trim().length > 0;
+    },
+
+    standardFeedback() {
+      if (!this.isValidStandard) return "Standard is required";
+      return "";
+    },
+
+    isValidPeriod() {
+      return this.selectedItemCheck.period?.trim().length > 0;
+    },
+
+    periodFeedback() {
+      if (!this.isValidPeriod) return "Period is required";
+      return "";
+    },
+
+    isValidUnit() {
+      if (this.selectedItemCheck.min || this.selectedItemCheck.max) {
+        return this.selectedItemCheck.unit?.trim().length > 0;
+      }
+      return true;
+    },
+
+    unitFeedback() {
+      if (!this.isValidUnit) return "Unit is required when min or max is set";
+      return "";
+    },
+
     isFormValid() {
-      const { itemcheck_nm, std, period } = this.selectedItemCheck;
       const hasRequiredFields =
-        itemcheck_nm?.trim() && std?.trim() && period?.trim();
+        this.isValidItemCheckName && this.isValidStandard && this.isValidPeriod;
 
       // If min or max is provided, unit is required
       if (
         (this.selectedItemCheck.min || this.selectedItemCheck.max) &&
-        !this.selectedItemCheck.unit
+        !this.isValidUnit
       ) {
         return false;
       }
@@ -229,6 +291,8 @@ export default {
   },
 
   methods: {
+    ...mapActions("itemchecks", ["updateItemcheck", "deleteItemcheck"]),
+
     getPeriodLabel(period) {
       const periods = {
         A: "A - 1 Month",
@@ -251,9 +315,7 @@ export default {
 
     openDeleteModal(itemcheck) {
       this.selectedItemCheck = { ...itemcheck };
-      console.log(this.selectedItemCheck);
       this.showDeleteModal = true;
-      console.log(this.showDeleteModal);
     },
 
     closeDeleteModal() {
@@ -274,9 +336,10 @@ export default {
         tools_id: null,
         part_id: "",
       };
+      this.isSubmitting = false;
     },
 
-    async editItemCheck() {
+    async handleEditItemCheck() {
       if (!this.isFormValid) {
         Swal.fire({
           title: "Error",
@@ -286,9 +349,13 @@ export default {
         return;
       }
 
+      this.isSubmitting = true;
+
       try {
-        const payload = {
-          id: this.selectedItemCheck._id,
+        // Get user from localStorage for user_id
+        const user = JSON.parse(localStorage.getItem("user"));
+
+        const itemcheckData = {
           itemcheck_nm: this.selectedItemCheck.itemcheck_nm,
           std: this.selectedItemCheck.std,
           period: this.selectedItemCheck.period,
@@ -302,15 +369,19 @@ export default {
           spare_part_id: this.selectedItemCheck.spare_part_id || null,
           tools_id: this.selectedItemCheck.tools_id || null,
           station_id: this.stationId,
+          user_id: user?._id,
+          part_id: this.selectedItemCheck.part_id,
         };
 
-        const response = await api.put(
-          `/itemcheck/edit-itemcheck?id=${this.selectedItemCheck._id}`,
-          payload
-        );
+        console.log("Selected itemcheck ID:", this.selectedItemCheck._id);
 
-        if (response?.data?.status === 200) {
-          this.$emit("fetch-ItemChecks");
+        const success = await this.updateItemcheck({
+          itemcheckId: this.selectedItemCheck._id,
+          itemcheckData,
+        });
+
+        if (success) {
+          this.$emit("fetch-item-checks");
           this.closeEditModal();
           Swal.fire({
             title: "Success",
@@ -327,33 +398,63 @@ export default {
           text: error.response?.data?.message || "Failed to update item check",
           icon: "error",
         });
+      } finally {
+        this.isSubmitting = false;
       }
     },
 
-    async deleteItemCheck() {
-      try {
-        const response = await api.delete(
-          `/itemcheck/delete-itemcheck?id=${this.selectedItemCheck._id}`
-        );
+    async handleDeleteItemCheck() {
+      if (!this.selectedItemCheck?._id) return;
 
-        if (response?.data?.status === 200) {
-          this.$emit("fetch-ItemChecks");
-          this.closeDeleteModal();
-          Swal.fire({
-            title: "Success",
-            text: "Item check deleted successfully",
-            icon: "success",
-            timer: 2000,
-            timerProgressBar: true,
-          });
+      // Store the ID before showing confirmation dialog
+      const itemcheckId = this.selectedItemCheck._id;
+
+      console.log("Selected item check for deletion:", {
+        id: itemcheckId,
+        itemcheck: this.selectedItemCheck,
+      });
+
+      try {
+        const result = await Swal.fire({
+          title: "Delete Item Check?",
+          text: "This action cannot be undone!",
+          icon: "warning",
+          showCancelButton: true,
+          confirmButtonText: "Delete",
+          cancelButtonText: "Cancel",
+        });
+
+        if (result.isConfirmed) {
+          this.isSubmitting = true;
+
+          console.log(
+            "Proceeding with deletion of item check ID:",
+            itemcheckId
+          );
+
+          const success = await this.deleteItemcheck(itemcheckId);
+
+          if (success) {
+            this.$emit("fetch-item-checks");
+            this.closeDeleteModal();
+            Swal.fire({
+              title: "Success",
+              text: "Item check deleted successfully",
+              icon: "success",
+              timer: 2000,
+              timerProgressBar: true,
+            });
+          }
         }
       } catch (error) {
         console.error("Error deleting item check:", error);
         Swal.fire({
           title: "Error",
-          text: error.response?.data?.message || "Failed to delete item check",
+          text: "Failed to delete item check",
           icon: "error",
         });
+      } finally {
+        this.isSubmitting = false;
       }
     },
 

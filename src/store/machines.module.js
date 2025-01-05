@@ -34,7 +34,7 @@ export default {
     SET_PARTS(state, { machineId, parts }) {
       state.parts = {
         ...state.parts,
-        [machineId]: parts,
+        [machineId]: parts.filter((part) => !part.deleted_by),
       };
     },
     SET_SELECTED_MACHINE(state, machine) {
@@ -49,16 +49,31 @@ export default {
       console.log("Adding machine to state:", machineToAdd);
       state.machines = [machineToAdd, ...state.machines];
     },
-    UPDATE_MACHINE(state, updatedMachine) {
-      const index = state.machines.findIndex(
-        (machine) => machine._id === updatedMachine._id
-      );
-      if (index !== -1) {
-        const newMachine = {
-          ...updatedMachine,
-        };
-        state.machines.splice(index, 1, newMachine);
+    ADD_PART(state, { machineId, part }) {
+      if (state.parts[machineId]) {
+        state.parts[machineId].push(part);
+      } else {
+        state.parts[machineId] = [part];
       }
+    },
+    UPDATE_MACHINE_NAME(state, { machineId, machine_nm }) {
+      // Update machine_nm for all rows with this machineId
+      state.machines = state.machines.map((machine) =>
+        machine._id === machineId ? { ...machine, machine_nm } : machine
+      );
+    },
+    UPDATE_PART(state, { partId, part_nm }) {
+      // Update in machines array
+      state.machines = state.machines.map((machine) =>
+        machine.part_id === partId ? { ...machine, part_nm } : machine
+      );
+
+      // Update in parts object
+      Object.keys(state.parts).forEach((machineId) => {
+        state.parts[machineId] = state.parts[machineId].map((part) =>
+          part._id === partId ? { ...part, part_nm } : part
+        );
+      });
     },
     DELETE_MACHINE(state, machineId) {
       console.log("In DELETE_MACHINE mutation with ID:", machineId);
@@ -78,6 +93,21 @@ export default {
         return keepMachine;
       });
       console.log(`Deleted ${initialCount - state.machines.length} machines`);
+    },
+    DELETE_PART(state, partId) {
+      // Remove from parts object
+      Object.keys(state.parts).forEach((machineId) => {
+        if (state.parts[machineId]) {
+          state.parts[machineId] = state.parts[machineId].filter(
+            (part) => part._id !== partId
+          );
+        }
+      });
+
+      // Remove from machines array where part_id matches
+      state.machines = state.machines.filter(
+        (machine) => !machine.part_id || machine.part_id !== partId
+      );
     },
     CLEAR_MACHINES(state) {
       state.machines = [];
@@ -239,43 +269,100 @@ export default {
       }
     },
 
+    // Create new part
+    async createPart({ commit, dispatch }, partData) {
+      commit("SET_LOADING", true);
+      try {
+        const response = await api.post(ENDPOINTS.CREATE, {
+          collection: "part",
+          name: partData.part_nm,
+          parent_id: partData.machine_id,
+        });
+        console.log("API response:", response);
+
+        if (response?.data?.status === 200) {
+          const newPartId = response.data.data.result.insertedId;
+
+          // Add the new part to state
+          commit("ADD_PART", {
+            machineId: partData.machine_id,
+            part: {
+              _id: newPartId,
+              part_nm: partData.part_nm,
+              machine_id: partData.machine_id,
+              created_dt: new Date().toISOString(),
+            },
+          });
+
+          // Refresh the machine's parts
+          await dispatch("fetchPartsByMachine", partData.machine_id);
+          toast.success("Part added successfully");
+          return true;
+        }
+        return false;
+      } catch (error) {
+        console.error("Error creating part:", error);
+        commit("SET_ERROR", error.message);
+        toast.error(error.message || "Failed to create part");
+        return false;
+      } finally {
+        commit("SET_LOADING", false);
+      }
+    },
+
     // Update existing machine
     async updateMachine({ commit }, { machineId, machineData }) {
       commit("SET_LOADING", true);
       try {
         const response = await api.put(ENDPOINTS.UPDATE, machineId, {
           collection: "machine",
+          _id: machineId,
           name: machineData.machine_nm,
         });
         console.log("Update Machine API response:", response);
 
         if (response?.data?.status === 200) {
-          const partResponse = await api.put(
-            ENDPOINTS.UPDATE,
-            machineData.part_id,
-            {
-              collection: "part",
-              name: machineData.part_nm,
-            }
-          );
-
-          if (partResponse?.data?.status === 200) {
-            commit("UPDATE_MACHINE", {
-              _id: machineId,
-              machine_nm: machineData.machine_nm,
-              part_nm: machineData.part_nm,
-              part_id: machineData.part_id,
-            });
-            toast.success("Machine updated successfully");
-            return true;
-          }
-        } else {
-          throw new Error(response?.data?.message || "Error updating machine");
+          // Update all instances of this machine in the state
+          commit("UPDATE_MACHINE_NAME", {
+            machineId,
+            machine_nm: machineData.machine_nm,
+          });
+          toast.success("Machine name updated successfully");
+          return true;
         }
+        return false;
       } catch (error) {
         console.error("Error updating machine:", error);
         commit("SET_ERROR", error.message);
         toast.error(error.message || "Failed to update machine");
+        return false;
+      } finally {
+        commit("SET_LOADING", false);
+      }
+    },
+
+    async updatePart({ commit }, { partId, partData }) {
+      commit("SET_LOADING", true);
+      try {
+        const response = await api.put(ENDPOINTS.UPDATE, partId, {
+          collection: "part",
+          _id: partId,
+          name: partData.part_nm,
+        });
+
+        if (response?.data?.status === 200) {
+          commit("UPDATE_PART", {
+            partId,
+            part_nm: partData.part_nm,
+          });
+          toast.success("Part updated successfully");
+          return true;
+        }
+        return false;
+      } catch (error) {
+        console.error("Error updating part:", error);
+        commit("SET_ERROR", error.message);
+        toast.error(error.message || "Failed to update part");
         return false;
       } finally {
         commit("SET_LOADING", false);
@@ -331,6 +418,40 @@ export default {
       }
     },
 
+    async deletePart({ commit, dispatch }, partId) {
+      commit("SET_LOADING", true);
+      try {
+        console.log("Deleting part with ID:", partId);
+        const response = await api.put(ENDPOINTS.DELETE, partId, {
+          collection: "part",
+          _id: partId,
+        });
+
+        console.log("Delete Part API response:", response);
+
+        if (response?.data?.status === 200) {
+          commit("DELETE_PART", partId);
+
+          if (response.data.data?.machine_id) {
+            await dispatch(
+              "fetchPartsByMachine",
+              response.data.data.machine_id
+            );
+          }
+          toast.success("Part deleted successfully");
+          return true;
+        }
+        return false;
+      } catch (error) {
+        console.error("Error deleting part:", error);
+        commit("SET_ERROR", error.message);
+        toast.error(error.message || "Failed to delete part");
+        return false;
+      } finally {
+        commit("SET_LOADING", false);
+      }
+    },
+
     // Select a machine
     selectMachine({ commit }, machine) {
       commit("SET_SELECTED_MACHINE", machine);
@@ -357,28 +478,20 @@ export default {
       state.machines.forEach((machine) => {
         const machineParts = state.parts[machine._id] || [];
 
-        if (machineParts.length === 0) {
-          // If no parts, add single entry
-          if (!machinesMap.has(machine._id)) {
-            machinesMap.set(machine._id, {
-              _id: machine._id,
-              machine_nm: machine.machine_nm,
-              part_nm: "-",
-              part_id: null,
-              station_id: machine.station_id,
-            });
-          }
-        } else {
-          // Add entry for each part
+        // Only add entries for machines that have parts
+        if (machineParts.length > 0) {
           machineParts.forEach((part) => {
-            const key = `${machine._id}_${part._id}`;
-            machinesMap.set(key, {
-              _id: machine._id,
-              machine_nm: machine.machine_nm,
-              part_nm: part.part_nm,
-              part_id: part._id,
-              station_id: machine.station_id,
-            });
+            if (!part.deleted_by) {
+              // Only include non-deleted parts
+              const key = `${machine._id}_${part._id}`;
+              machinesMap.set(key, {
+                _id: machine._id,
+                machine_nm: machine.machine_nm,
+                part_nm: part.part_nm,
+                part_id: part._id,
+                station_id: machine.station_id,
+              });
+            }
           });
         }
       });

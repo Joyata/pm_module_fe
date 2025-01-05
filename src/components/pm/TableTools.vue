@@ -183,7 +183,12 @@
         <CModalHeader>
           <CModalTitle>Delete Tool</CModalTitle>
         </CModalHeader>
-        <CModalBody>Are you sure you want to delete this tool?</CModalBody>
+        <CModalBody
+          >Are you sure you want to delete this tool?
+          <div class="mt-2 text-center fw-bold">
+            {{ selectedTool.tool_nm }}
+          </div>
+        </CModalBody>
         <CModalFooter>
           <CButton color="secondary" @click="closeDeleteModal">Cancel</CButton>
           <CButton

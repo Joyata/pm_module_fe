@@ -60,7 +60,7 @@
                 v-else
                 :machines="paginatedMachines"
                 :station-id="selectedStation"
-                @refresh="refreshData"
+                @refresh="handleTableRefresh"
               ></TableMachine>
             </CCol>
           </CRow>
@@ -92,10 +92,36 @@
     </CCol>
   </CRow>
 
-  <!-- Add Modal -->
-  <CModal size="lg" :visible="showAddModal" @close="closeAddModal">
+  <!-- Add Mode Selection Modal -->
+  <CModal size="sm" :visible="showAddModeModal" @close="closeAddModeModal">
     <CModalHeader>
-      <CModalTitle>Add Machine</CModalTitle>
+      <CModalTitle>Add New</CModalTitle>
+    </CModalHeader>
+    <CModalBody>
+      <div class="d-grid gap-2">
+        <CButton color="primary" @click="openNewMachineModal">
+          <CIcon icon="cil-industry" class="me-2"></CIcon>
+          Add New Machine
+        </CButton>
+        <CButton color="success" @click="openNewPartModal">
+          <CIcon icon="cil-puzzle" class="me-2"></CIcon>
+          Add Part to Existing Machine
+        </CButton>
+      </div>
+    </CModalBody>
+    <CModalFooter>
+      <CButton color="secondary" @click="closeAddModeModal">Close</CButton>
+    </CModalFooter>
+  </CModal>
+
+  <!-- Add New Machine Modal -->
+  <CModal
+    size="lg"
+    :visible="showNewMachineModal"
+    @close="closeNewMachineModal"
+  >
+    <CModalHeader>
+      <CModalTitle>Add New Machine</CModalTitle>
     </CModalHeader>
     <CModalBody>
       <div class="px-2">
@@ -118,11 +144,48 @@
       </div>
     </CModalBody>
     <CModalFooter>
-      <CButton color="secondary" @click="closeAddModal">Close</CButton>
+      <CButton color="secondary" @click="closeNewMachineModal">Close</CButton>
       <CButton
         color="primary"
         @click="handleAddMachine"
         :disabled="!isFormValid || isSubmitting"
+        >{{ isSubmitting ? "Adding..." : "Add" }}</CButton
+      >
+    </CModalFooter>
+  </CModal>
+
+  <!-- Add New Part Modal -->
+  <CModal size="lg" :visible="showNewPartModal" @close="closeNewPartModal">
+    <CModalHeader>
+      <CModalTitle>Add New Part</CModalTitle>
+    </CModalHeader>
+    <CModalBody>
+      <div class="px-2">
+        <CFormSelect
+          class="mb-3"
+          v-model="newPart.machine_id"
+          label="Select Machine"
+          :state="isValidMachineSelect"
+          :feedback="machineSelectFeedback"
+          :options="existingMachineOptions"
+          required
+        ></CFormSelect>
+        <CFormInput
+          class="mb-3"
+          v-model="newPart.part_nm"
+          label="Part Name"
+          :state="isValidNewPartName"
+          :feedback="newPartNameFeedback"
+          required
+        ></CFormInput>
+      </div>
+    </CModalBody>
+    <CModalFooter>
+      <CButton color="secondary" @click="closeNewPartModal">Close</CButton>
+      <CButton
+        color="primary"
+        @click="handleAddPart"
+        :disabled="!isNewPartFormValid || isSubmitting"
         >{{ isSubmitting ? "Adding..." : "Add" }}</CButton
       >
     </CModalFooter>
@@ -141,6 +204,7 @@ import SearchFilter from "../../components/pm/SearchFilter";
 import Notifications from "../../components/pm/Notifications";
 import TableMachine from "../../components/pm/TableMachine";
 import Swal from "sweetalert2";
+import { CFormInput, CFormSelect } from "@coreui/vue";
 
 export default {
   name: "PMMasterMachine",
@@ -152,7 +216,9 @@ export default {
   data() {
     return {
       selectedStation: null,
-      showAddModal: false,
+      showAddModeModal: false,
+      showNewMachineModal: false,
+      showNewPartModal: false,
       showNotificationsModal: false,
       isSubmitting: false,
       selectedMachine: "",
@@ -160,6 +226,10 @@ export default {
         machine_nm: "",
         part_nm: "",
         station_id: "",
+      },
+      newPart: {
+        machine_id: "",
+        part_nm: "",
       },
       currentPage: 1,
       itemsPerPage: 5,
@@ -212,6 +282,37 @@ export default {
       return this.isValidMachineName && this.isValidPartName;
     },
 
+    existingMachineOptions() {
+      return this.machines
+        .filter((machine) => !machine.deleted_by)
+        .map((machine) => ({
+          value: machine._id,
+          label: machine.machine_nm,
+        }));
+    },
+
+    isValidMachineSelect() {
+      return this.newPart.machine_id && this.newPart.machine_id.length > 0;
+    },
+
+    machineSelectFeedback() {
+      if (!this.isValidMachineSelect) return "Please select a machine";
+      return "";
+    },
+
+    isValidNewPartName() {
+      return this.newPart.part_nm?.trim().length > 0;
+    },
+
+    newPartNameFeedback() {
+      if (!this.isValidNewPartName) return "Part name is required";
+      return "";
+    },
+
+    isNewPartFormValid() {
+      return this.isValidMachineSelect && this.isValidNewPartName;
+    },
+
     paginatedMachines() {
       const start = (this.currentPage - 1) * this.itemsPerPage;
       const end = start + this.itemsPerPage;
@@ -219,13 +320,24 @@ export default {
     },
 
     filteredMachines() {
-      if (!this.selectedMachine || this.selectedMachine === "all") {
-        return this.machinesWithParts;
+      // Reset page to 1 if filtered data length is less than current page's data
+      const filtered =
+        !this.selectedMachine || this.selectedMachine === "all"
+          ? this.machinesWithParts
+          : this.machinesWithParts.filter(
+              (machine) => machine.machine_nm === this.selectedMachine
+            );
+
+      // Check if we need to reset pagination
+      const totalItems = filtered.length;
+      const lastPageForItems = Math.ceil(totalItems / this.itemsPerPage);
+      if (this.currentPage > lastPageForItems) {
+        this.$nextTick(() => {
+          this.currentPage = Math.max(1, lastPageForItems);
+        });
       }
 
-      return this.machinesWithParts.filter(
-        (machine) => machine.machine_nm === this.selectedMachine
-      );
+      return filtered;
     },
 
     totalPages() {
@@ -234,7 +346,7 @@ export default {
 
     machineOptions() {
       let defaultOption = {
-        value: 0,
+        value: "",
         label: "Select Machine",
         disabled: true,
         selected: true,
@@ -243,10 +355,12 @@ export default {
         value: "all",
         label: "All",
       };
-      let options = this.uniqueMachines.map((machines) => ({
-        value: machines.machine_nm,
-        label: machines.machine_nm,
-      }));
+      let options = _.uniqBy(this.machines, "machine_nm")
+        .filter((machine) => !machine.deleted_by)
+        .map((machine) => ({
+          value: machine.machine_nm,
+          label: machine.machine_nm,
+        }));
       return [defaultOption, allOption, ...options];
     },
   },
@@ -256,6 +370,7 @@ export default {
       "fetchMachinesByStation",
       "selectMachine",
       "createMachine",
+      "createPart",
     ]),
     async handleSearch(searchParams) {
       if (this.selectedStation !== searchParams.station_id) {
@@ -270,22 +385,28 @@ export default {
 
     async refreshData() {
       if (this.selectedStation) {
+        this.currentPage = 1;
         await this.fetchMachinesByStation(this.selectedStation);
       }
     },
 
+    async handleTableRefresh() {
+      this.selectedMachine = "all";
+      this.currentPage = 1;
+      await this.refreshData();
+    },
+
     async onMachineChange(event) {
-      const selectedMachineId = event.target.value;
-      if (selectedMachineId === "all") {
-        this.selectMachine(null);
+      const selectedMachineName = event.target.value;
+      console.log("Selected machine name:", selectedMachineName);
+
+      this.currentPage = 1;
+
+      if (selectedMachineName || selectedMachineName === "all") {
+        this.selectMachine = "";
         return;
       }
-      const selectedMachine = this.uniqueMachines.find(
-        (machine) => machine.machine_nm === selectedMachineId
-      );
-      if (selectedMachine) {
-        this.selectMachine(selectedMachine);
-      }
+      this.selectedMachine = selectedMachineName;
     },
 
     openAddModal() {
@@ -295,17 +416,41 @@ export default {
           text: "Please select a station to add machine",
           icon: "error",
         });
+        return;
       }
-      this.showAddModal = true;
+      this.showAddModeModal = true;
+    },
+
+    closeAddModeModal() {
+      this.showAddModeModal = false;
+    },
+
+    openNewMachineModal() {
+      this.closeAddModeModal();
+      this.showNewMachineModal = true;
       this.newMachine.station_id = this.selectedStation;
     },
 
-    closeAddModal() {
-      this.showAddModal = false;
+    closeNewMachineModal() {
+      this.showNewMachineModal = false;
       this.newMachine = {
         machine_nm: "",
         part_nm: "",
         station_id: "",
+      };
+      this.isSubmitting = false;
+    },
+
+    openNewPartModal() {
+      this.closeAddModeModal();
+      this.showNewPartModal = true;
+    },
+
+    closeNewPartModal() {
+      this.showNewPartModal = false;
+      this.newPart = {
+        machine_id: "",
+        part_nm: "",
       };
       this.isSubmitting = false;
     },
@@ -339,7 +484,7 @@ export default {
           station_id: this.selectedStation,
         });
         if (success) {
-          this.closeAddModal();
+          this.closeNewMachineModal();
           await this.refreshData();
           Swal.fire({
             title: "Success",
@@ -354,6 +499,47 @@ export default {
         Swal.fire({
           title: "Error",
           text: "Failed to add machine. Please try again.",
+          icon: "error",
+        });
+      } finally {
+        this.isSubmitting = false;
+      }
+    },
+
+    async handleAddPart() {
+      if (!this.isNewPartFormValid) {
+        Swal.fire({
+          title: "Error",
+          text: "Please fill in all fields",
+          icon: "error",
+        });
+        return;
+      }
+
+      this.isSubmitting = true;
+
+      try {
+        const success = await this.createPart({
+          machine_id: this.newPart.machine_id,
+          part_nm: this.newPart.part_nm,
+        });
+
+        if (success) {
+          this.closeNewPartModal();
+          await this.refreshData();
+          Swal.fire({
+            title: "Success",
+            text: "Part added successfully",
+            icon: "success",
+            timer: 2000,
+            timerProgressBar: true,
+          });
+        }
+      } catch (error) {
+        console.error("Error adding part:", error);
+        Swal.fire({
+          title: "Error",
+          text: "Failed to add part. Please try again.",
           icon: "error",
         });
       } finally {

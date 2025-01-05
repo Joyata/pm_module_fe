@@ -8,6 +8,7 @@ import SOPModule from "./SOP.module";
 import sparepartsModule from "./spareparts.module";
 import toolsModule from "./tools.module";
 import machinesModule from "./machines.module";
+import itemchecksModule from "./itemchecks.module";
 import checksheetsModule from "./checksheets.module";
 import notificationsModule from "./notifications.module";
 import authModule from "./auth.module";
@@ -41,6 +42,7 @@ export default createStore({
     spareparts: sparepartsModule,
     tools: toolsModule,
     machines: machinesModule,
+    itemchecks: itemchecksModule,
     checksheets: checksheetsModule,
     notifications: notificationsModule,
     auth: authModule,
