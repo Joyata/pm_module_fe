@@ -418,6 +418,8 @@ export default {
       showImageModal: false,
       selectedImage: null,
       selectedItem: null,
+      notes: "",
+      isSubmitting: false,
     };
   },
   computed: {

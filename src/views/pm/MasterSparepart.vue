@@ -180,7 +180,6 @@ export default {
         unit: "",
         station_id: "",
       },
-      sparepartOptions: [],
       currentPage: 1,
       itemsPerPage: 5,
     };

@@ -39,12 +39,13 @@
 
           <!-- Team Member Selection -->
           <CCol :md="6" class="mb-3">
-            <CFormLabel>Assign To (Optional)</CFormLabel>
+            <CFormLabel>Assign To</CFormLabel>
             <CFormSelect
               v-model="formData.user_id"
               :state="validationState.user_id"
+              required
             >
-              <option value="">Unassigned</option>
+              <option value="" disabled selected>Select Team Member</option>
               <option
                 v-for="member in availableTeamMembers"
                 :key="member._id"
@@ -53,6 +54,7 @@
                 {{ member.username }}
               </option>
             </CFormSelect>
+            <CFormFeedback invalid>Please select a team member</CFormFeedback>
           </CCol>
 
           <!-- Date Selection -->
@@ -100,7 +102,7 @@
       <CButton
         color="primary"
         @click="handleSubmit"
-        :disabled="loading || !isFormValid || hasDateWarning"
+        :disabled="loading || !isFormValid"
       >
         <CSpinner v-if="loading" size="sm" component="span" class="me-2" />
         {{ loading ? "Creating..." : "Create Task" }}
@@ -110,6 +112,7 @@
 </template>
 
 <script>
+import { CFormFeedback } from "@coreui/vue";
 import { mapState, mapGetters } from "vuex";
 
 export default {
@@ -132,9 +135,7 @@ export default {
       formData: {
         kanban_id: "",
         user_id: "",
-        date: this.selectedDate
-          ? this.selectedDate.toISOString().split("T")[0]
-          : "",
+        date: this.selectedDate ? formatDateForInput(this.selectedDate) : "",
         status: "PLAN",
       },
       validationState: {
@@ -210,15 +211,8 @@ export default {
 
     isFormValid() {
       return (
-        this.formData.kanban_id &&
-        this.formData.date &&
-        this.validationState.kanban_id !== false &&
-        this.validationState.date !== false
+        this.formData.kanban_id && this.formData.user_id && this.formData.date
       );
-    },
-
-    hasDateWarning() {
-      return !!this.dateValidationMessage;
     },
   },
 
@@ -248,11 +242,23 @@ export default {
     },
 
     formatDateForAPI(date) {
-      const d = new Date(date);
-      const day = String(d.getDate()).padStart(2, "0");
-      const month = String(d.getMonth() + 1).padStart(2, "0");
-      const year = d.getFullYear();
-      return `${day}-${month}-${year}`;
+      console.log("Formatting date for API:", date);
+
+      const dateObj = new Date(date);
+
+      // Adjust for GMT+7
+      const jakartaOffset = 7 * 60;
+      const localOffset = dateObj.getTimezoneOffset();
+      const totalOffset = jakartaOffset + localOffset;
+
+      dateObj.setMinutes(dateObj.getMinutes() + totalOffset);
+
+      dateObj.setHours(7, 0, 0, 0);
+
+      const formattedDate = dateObj.toISOString();
+
+      console.log("Formatted date for API:", formattedDate);
+      return formattedDate;
     },
 
     handleKanbanChange() {
@@ -267,13 +273,13 @@ export default {
       );
       console.log("Selected kanban:", selectedKanban);
 
-      if (selectedKanban) {
+      if (this.selectedKanban) {
         this.validateDate();
       }
     },
 
     validateDate() {
-      if (!this.formData.date || !this.formData.kanban_id) {
+      if (!this.formData.date) {
         this.dateValidationMessage = "";
         return;
       }
@@ -308,7 +314,7 @@ export default {
         if (daysDiff > allowedDays) {
           this.dateValidationMessage =
             "Selected date is too far from recommended maintenance date";
-          this.validationState.date = false;
+          this.validationState.date = true; // Allow proceeding
           return;
         }
       }
@@ -318,6 +324,9 @@ export default {
     },
 
     async handleSubmit() {
+      // Validate user_id
+      this.validationState.user_id = !!this.formData.user_id;
+
       if (!this.isFormValid) return;
 
       this.loading = true;
@@ -328,6 +337,8 @@ export default {
           date: this.formatDateForAPI(this.formData.date),
           status: "PLAN",
         };
+
+        console.log("Creating task:", taskData);
 
         await this.$emit("submit", taskData);
         this.resetForm();

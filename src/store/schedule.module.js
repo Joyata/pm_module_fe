@@ -279,12 +279,12 @@ export default {
         // Transform the data to match backend expectations
         const enrichedData = {
           kanban_id: workOrderData.kanban_id,
-          work_dt: new Date(
-            workOrderData.date.split("-").reverse().join("-")
-          ).toISOString(),
+          date: workOrderData.date,
           status: "PLAN",
           user_id: workOrderData.user_id || null,
         };
+
+        console.log("📝 Enriched work order data:", enrichedData);
 
         const response = await api.post("/kanban/add-work-order", enrichedData);
         console.log("📥 API Response:", response.data);
@@ -292,7 +292,7 @@ export default {
         if (response?.data?.status === 200) {
           // Add the new work order to local state with complete information
           const newWorkOrder = {
-            _id: response.data.data._id,
+            _id: response.data.data.insertedId,
             date: workOrderData.date,
             kanbanId: kanban._id,
             kanbanNo: kanban.kanban_nm,
@@ -303,6 +303,8 @@ export default {
             assignedTo: workOrderData.user_id || null,
             station_id: kanban.station_id,
           };
+
+          console.log("✨ New work order:", newWorkOrder);
 
           commit("ADD_WORK_ORDER", newWorkOrder);
           toast.success("Work order created successfully");
@@ -328,7 +330,7 @@ export default {
         // Prepare API updates
         const apiUpdates = {
           id: workOrderId,
-          data: updates.data || {},
+          user_id: updates?.user_id || null,
           ...(updates.date && { date: updates.date }),
           ...(updates.status && { status: updates.status }),
         };

@@ -173,7 +173,6 @@ export default {
         quantity: "",
         station_id: "",
       },
-      toolOptions: [],
       currentPage: 1,
       itemsPerPage: 5,
     };

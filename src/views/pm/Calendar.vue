@@ -158,7 +158,6 @@
     :visible="showDetailsModal"
     :work-order="selectedWorkOrder"
     @close="showDetailsModal = false"
-    @assign="handleAssignExisting"
     @refresh="handleRefresh"
   />
 
@@ -469,6 +468,10 @@ export default {
         });
         this.showDetailsModal = true;
       }
+    },
+
+    handleRefresh() {
+      this.fetchWorkOrders();
     },
 
     getEventClass(workOrder) {

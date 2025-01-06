@@ -39,7 +39,7 @@
 
     <CCardBody>
       <apexchart
-        :key="`vibration-chart-${chartKey}`"
+        :key="`temperature-chart-${chartKey}`"
         type="line"
         height="400"
         :options="chartOptions"
@@ -93,7 +93,7 @@ export default {
     chartOptions() {
       const options = {
         chart: {
-          id: `vibration-chart-${this.chartKey}`,
+          id: `temperature-chart-${this.chartKey}`,
           animations: {
             enabled: false,
           },

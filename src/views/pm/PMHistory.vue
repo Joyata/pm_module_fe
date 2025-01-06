@@ -98,7 +98,7 @@
 
           <!-- PM History Table -->
           <TablePMHistory
-            :filteredPMHistory="filteredPMHistory"
+            :pm-history="filteredPMHistory"
             :currentPage="currentPage"
             :itemsPerPage="itemsPerPage"
           ></TablePMHistory>
@@ -201,6 +201,14 @@ export default {
     unreadCount() {
       return this.getUnreadNotifications.length;
     },
+
+    uniqueKanbanNos() {
+      // return [...new Set(this.pmHistory.map((item) => item.kanbanNo))];
+    },
+
+    uniqueMachineNames() {
+      // return [...new Set(this.pmHistory.map((item) => item.machineName))];
+    },
   },
   methods: {
     ...mapActions("checksheets", ["fetchChecksheets"]),
@@ -243,6 +251,11 @@ export default {
       this.dateRange = newDateRange;
       this.currentPage = 1; // Reset to first page when changing date range
     },
+
+    handleFilterChange() {
+      this.currentPage = 1; // Reset to first page when filters change
+    },
+
     formatDate(date) {
       if (!date) return "";
       const year = date.getFullYear();

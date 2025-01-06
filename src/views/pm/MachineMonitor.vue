@@ -62,17 +62,44 @@
           </CCol>
         </CRow>
 
-        <!-- Chart Section -->
+        <!-- Sensor Charts Section -->
         <div v-if="!isLoading">
+          <!-- Vibration Chart -->
           <VibrationChart
-            :sensor-data="sensorData"
-            :current-values="currentValues"
-            :sensor-config="sensorConfig"
-            :available-axes="availableAxes"
+            :sensor-data="sensorData.vibration"
+            :current-values="currentValues.vibration"
+            :sensor-config="sensorConfigs.vibration"
+            :available-axes="availableAxes.vibration.axes"
             :date-range="dateRange"
             :is-admin="isAdmin"
-            :chart-key="chartKey"
-            @show-settings="showThresholdSettings = true"
+            :chart-key="chartKeys.vibration"
+            @show-settings="showThresholdSettings.vibration = true"
+            class="mb-4"
+          />
+
+          <!-- Power Chart -->
+          <PowerChart
+            :sensor-data="sensorData.power"
+            :current-values="currentValues.power"
+            :sensor-config="sensorConfigs.power"
+            :available-axes="availableAxes.power.axes"
+            :date-range="dateRange"
+            :is-admin="isAdmin"
+            :chart-key="chartKeys.power"
+            @show-settings="showThresholdSettings.power = true"
+            class="mb-4"
+          />
+
+          <!-- Temperature Chart -->
+          <TemperatureChart
+            :sensor-data="sensorData.temperature"
+            :current-values="currentValues.temperature"
+            :sensor-config="sensorConfigs.temperature"
+            :available-axes="availableAxes.temperature.axes"
+            :date-range="dateRange"
+            :is-admin="isAdmin"
+            :chart-key="chartKeys.temperature"
+            @show-settings="showThresholdSettings.temperature = true"
           />
         </div>
 
@@ -99,12 +126,14 @@
 
     <ThresholdSettings
       v-if="isAdmin"
-      :visible="showThresholdSettings"
+      v-for="sensorType in sensorTypes"
+      :key="sensorType"
+      :visible="showThresholdSettings[sensorType]"
       :machine-id="id"
-      :sensor-config="sensorConfig"
-      :available-axes="availableAxes"
-      @close="showThresholdSettings = false"
-      @updated="loadThresholds"
+      :sensor-config="sensorConfigs[sensorType]"
+      :available-axes="availableAxes[sensorType].axes"
+      @close="showThresholdSettings[sensorType] = false"
+      @updated="loadThresholds(sensorType)"
     />
   </div>
 </template>
@@ -118,6 +147,8 @@ import AlertNotification from "../../components/pm/AlertNotification.vue";
 import MachineStatus from "../../components/pm/MachineStatus.vue";
 import ControlPanel from "../../components/pm/ControlPanel.vue";
 import VibrationChart from "../charts/VibrationChart.vue";
+import PowerChart from "../charts/PowerChart.vue";
+import TemperatureChart from "../charts/TemperatureChart.vue";
 import ExportModal from "../../components/pm/ExportModal.vue";
 import ThresholdSettings from "../../components/pm/ThresholdSettings.vue";
 import api from "@/apis/CommonAPI";
@@ -132,6 +163,8 @@ export default {
     MachineStatus,
     ControlPanel,
     VibrationChart,
+    PowerChart,
+    TemperatureChart,
     ExportModal,
     ThresholdSettings,
   },
@@ -147,9 +180,53 @@ export default {
     return {
       updateInterval: 5000, // 5 seconds
       isMonitoring: true,
-      chartKey: 0,
-      currentValues: {},
-      sensorData: {},
+      sensorTypes: ["vibration", "power", "temperature"],
+      chartKeys: {
+        vibration: 0,
+        power: 0,
+        temperature: 0,
+      },
+      currentValues: {
+        vibration: {
+          x: 0,
+          y: 0,
+          z: 0,
+        },
+        power: {
+          voltage: 0,
+          current: 0,
+          frequency: 0,
+        },
+        temperature: {
+          celcius: 0,
+        },
+      },
+      sensorData: {
+        vibration: {
+          x: [],
+          y: [],
+          z: [],
+        },
+        power: {
+          voltage: [],
+          current: [],
+          frequency: [],
+        },
+        temperature: {
+          celcius: [],
+        },
+      },
+      availableAxes: {
+        vibration: {
+          axes: ["x", "y", "z"],
+        },
+        power: {
+          axes: ["voltage", "current", "frequency"],
+        },
+        temperature: {
+          axes: ["celcius"],
+        },
+      },
       isLoading: false,
       selectedTimeRange: "1h",
       timeRanges: [
@@ -162,31 +239,81 @@ export default {
         text: "Running",
         color: "success",
       },
-      sensorConfig: {
-        name: "Vibration",
-        unit: "mm/s²",
-        min: -2,
-        max: 12,
-        warningThreshold: {
-          x: 0.5,
-          y: 0.5,
-          z: 11,
+      sensorConfigs: {
+        vibration: {
+          name: "Vibration",
+          unit: "mm/s²",
+          min: -2,
+          max: 12,
+          axes: ["x", "y", "z"],
+          sensorId: "ACCEL001",
+          columnName: "sensor01_acc_xyz",
+          warningThreshold: {
+            x: 0.5,
+            y: 0.5,
+            z: 11,
+          },
+          criticalThreshold: {
+            x: 1,
+            y: 1,
+            z: 11.5,
+          },
+          colors: {
+            x: "#4BC0C0",
+            y: "#FF6384",
+            z: "#FFCE56",
+          },
         },
-        criticalThreshold: {
-          x: 1,
-          y: 1,
-          z: 11.5,
+        power: {
+          name: "Power",
+          unit: "V/A/Hz",
+          min: 0,
+          max: 250,
+          axes: ["voltage", "current", "frequency"],
+          sensorId: "POWER001",
+          columnName: "sensor02_pwr_vcf",
+          warningThreshold: {
+            voltage: 230,
+            current: 10,
+            frequency: 51,
+          },
+          criticalThreshold: {
+            voltage: 240,
+            current: 15,
+            frequency: 52,
+          },
+          colors: {
+            voltage: "#4BC0C0",
+            current: "#FF6384",
+            frequency: "#FFCE56",
+          },
         },
-        colors: {
-          x: "#4BC0C0",
-          y: "#FF6384",
-          z: "#FFCE56",
+        temperature: {
+          name: "Temperature",
+          unit: "°C",
+          min: 0,
+          max: 150,
+          axes: ["celcius"],
+          sensorId: "TEMPERATURE001",
+          columnName: "sensor03_temp_c",
+          warningThreshold: {
+            celcius: 70,
+          },
+          criticalThreshold: {
+            celcius: 85,
+          },
+          colors: {
+            celcius: "#FF9F40",
+          },
         },
       },
-      availableAxes: ["x", "y", "z"],
       alertHistory: [],
       showExportModal: false,
-      showThresholdSettings: false,
+      showThresholdSettings: {
+        vibration: false,
+        power: false,
+        temperature: false,
+      },
       dateRange: null,
       datePickerFormat: "MMM dd, yyyy HH:mm",
       currentDateTime: new Date().toISOString().slice(0, 16),
@@ -226,14 +353,19 @@ export default {
     async fetchDataWithRange(start, end) {
       try {
         this.isLoading = true;
-        const url = `/ts/read-data?oldest_dt=${start.toISOString()}&newest_dt=${end.toISOString()}&sensor_id=ACCEL001`;
 
-        const response = await api.get(url, "?");
+        for (const sensorType of this.sensorTypes) {
+          const config = this.sensorConfigs[sensorType];
+          const url = `/ts/read-data?oldest_dt=${start.toISOString()}&newest_dt=${end.toISOString()}&sensor_col=${
+            config.columnName
+          }`;
+          const response = await api.get(url, "?");
 
-        if (response?.data?.data) {
-          this.processVibrationData(response.data.data, false);
-        } else {
-          throw new Error("No data received for selected time range");
+          if (response?.data?.data) {
+            this.processSensorData(sensorType, response.data.data, false);
+          } else {
+            throw new Error("No data received for selected time range");
+          }
         }
       } catch (error) {
         this.showAlert(
@@ -253,12 +385,17 @@ export default {
         const endTime = new Date();
         const startTime = new Date(endTime - timeRange * 1000);
 
-        const url = `/ts/read-data?oldest_dt=${startTime.toISOString()}&newest_dt=${endTime.toISOString()}&sensor_id=ACCEL001`;
+        for (const sensorType of this.sensorTypes) {
+          const config = this.sensorConfigs[sensorType];
+          const url = `/ts/read-data?oldest_dt=${startTime.toISOString()}&newest_dt=${endTime.toISOString()}&sensor_col=${
+            config.columnName
+          }`;
 
-        const response = await api.get(url, "?");
+          const response = await api.get(url, "?");
 
-        if (response?.data?.data) {
-          this.processVibrationData(response.data.data);
+          if (response?.data?.data) {
+            this.processSensorData(sensorType, response.data.data);
+          }
         }
       } catch (error) {
         if (this.retryAttempts < this.maxRetries) {
@@ -282,22 +419,29 @@ export default {
       if (!this.isMonitoring) return;
 
       try {
-        const newestData = this.sensorData[this.availableAxes[0]]?.slice(-1)[0];
-        const newestTimestamp = newestData
-          ? new Date(newestData.x)
-          : new Date(Date.now() - 60000);
+        for (const sensorType of this.sensorTypes) {
+          const config = this.sensorConfigs[sensorType];
+          const axes = config.axes;
+          const newestData = this.sensorData[sensorType][axes[0]]?.slice(-1)[0];
+          const newestTimestamp = newestData
+            ? new Date(newestData.x)
+            : new Date(Date.now() - 60000);
 
-        const url = `/ts/read-data?oldest_dt=${newestTimestamp.toISOString()}&sensor_id=ACCEL001`;
+          const url = `/ts/read-data?oldest_dt=${newestTimestamp.toISOString()}&sensor_col=${
+            config.columnName
+          }`;
 
-        const response = await api.get(url, "?");
+          const response = await api.get(url, "?");
 
-        if (response?.data?.data) {
-          const newData = response.data.data.filter(
-            (reading) =>
-              new Date(reading.timestamp).getTime() > newestTimestamp.getTime()
-          );
-          if (newData.length > 0) {
-            this.processVibrationData(newData, true);
+          if (response?.data?.data) {
+            const newData = response.data.data.filter(
+              (reading) =>
+                new Date(reading.timestamp).getTime() >
+                newestTimestamp.getTime()
+            );
+            if (newData.length > 0) {
+              this.processSensorData(sensorType, newData, true);
+            }
           }
         }
       } catch (error) {
@@ -312,33 +456,83 @@ export default {
     },
 
     // Data Processing Functions
-    processVibrationData(data, isUpdate = false) {
+    processSensorData(sensorType, data, isUpdate = false) {
       if (!data || !data.length) {
         this.showAlert(
           "No Data",
-          "No data available for the selected time range",
+          `No ${sensorType} data available for the selected time range`,
           "warning"
         );
         return;
       }
 
+      const config = this.sensorConfigs[sensorType];
       const processedData = {};
-      this.availableAxes.forEach((axis) => {
+
+      config.axes.forEach((axis) => {
         processedData[axis] = data.map((reading) => ({
           x: new Date(reading.timestamp).getTime(),
-          y: reading.acceleration[axis],
+          y: this.extractSensorValue(sensorType, reading, axis),
         }));
       });
 
+      // Safety check before updating values
+      if (!this.sensorData[sensorType]) {
+        this.sensorData[sensorType] = {};
+      }
+
+      if (!this.currentValues[sensorType]) {
+        this.currentValues[sensorType] = {};
+      }
+
       // Update current values with latest reading
-      const latestReading = data[data.length - 1].acceleration;
-      this.availableAxes.forEach((axis) => {
-        this.currentValues[axis] = latestReading[axis];
+      const latestReading = data[data.length - 1];
+      config.axes.forEach((axis) => {
+        this.currentValues[sensorType][axis] = this.extractSensorValue(
+          sensorType,
+          latestReading,
+          axis
+        );
       });
 
-      this.sensorData = processedData;
-      this.updateMachineStatus();
-      this.chartKey = Date.now();
+      this.sensorData[sensorType] = processedData;
+      this.updateMachineStatus(sensorType);
+      this.chartKeys[sensorType] = Date.now();
+    },
+
+    extractSensorValue(sensorType, reading, axis) {
+      switch (sensorType) {
+        case "vibration":
+          return reading.acceleration?.[axis] || 0;
+        case "power":
+          return reading.power?.[axis] || 0;
+        case "temperature":
+          return reading.temperature?.[axis] || 0;
+        default:
+          return 0;
+      }
+    },
+
+    resetSensorData() {
+      // Reset each sensor type's data
+      this.sensorTypes.forEach((sensorType) => {
+        const config = this.sensorConfigs[sensorType];
+
+        // Reset current values
+        this.currentValues[sensorType] = {};
+        config.axes.forEach((axis) => {
+          this.currentValues[sensorType][axis] = 0;
+        });
+
+        // Reset chart data
+        this.sensorData[sensorType] = {};
+        config.axes.forEach((axis) => {
+          this.sensorData[sensorType][axis] = [];
+        });
+
+        // Reset chart key to force re-render
+        this.chartKeys[sensorType] = Date.now();
+      });
     },
 
     // Control Functions
@@ -348,7 +542,7 @@ export default {
 
       if (this.dateRange) {
         const [start, end] = this.dateRange;
-        await this.fetchDataWithRange(start, end);
+        await this.fetchDataWithRange(new Date(start), new Date(end));
         return;
       }
 
@@ -383,7 +577,9 @@ export default {
 
       if (!range || !Array.isArray(range) || range.some((date) => !date)) {
         this.dateRange = null;
-        this.startDataUpdate();
+        this.isMonitoring = true; // Re-enable monitoring
+        this.resetSensorData(); // Clear existing data
+        this.startDataUpdate(); // Start fresh data fetch
         return;
       }
 
@@ -395,6 +591,7 @@ export default {
 
         this.dateRange = [start, end];
         this.isMonitoring = false;
+        this.resetSensorData(); // Clear existing data before showing filtered data
         this.fetchDataWithRange(start, end);
       } catch (error) {
         this.showAlert(
@@ -408,6 +605,8 @@ export default {
     changeTimeRange(range) {
       this.selectedTimeRange = range;
       this.dateRange = null;
+      this.isMonitoring = true;
+      this.resetSensorData();
       this.startDataUpdate();
     },
 
@@ -426,35 +625,46 @@ export default {
       let highestSeverity = "success";
       let statusText = "Running";
 
-      this.availableAxes.forEach((axis) => {
-        const value = this.currentValues[axis];
-        if (value === undefined) return;
+      for (const sensorType of this.sensorTypes) {
+        const config = this.sensorConfigs[sensorType];
+        const values = this.currentValues[sensorType];
 
-        if (value > this.sensorConfig.criticalThreshold[axis]) {
-          highestSeverity = "danger";
-          statusText = "Critical";
-          this.showAlert(
-            "Critical Alert",
-            `Vibration ${axis.toUpperCase()} has exceeded critical threshold: ${value.toFixed(
-              2
-            )} ${this.sensorConfig.unit}`,
-            "danger"
-          );
-        } else if (
-          value > this.sensorConfig.warningThreshold[axis] &&
-          highestSeverity !== "danger"
-        ) {
-          highestSeverity = "warning";
-          statusText = "Warning";
-          this.showAlert(
-            "Warning Alert",
-            `Vibration ${axis.toUpperCase()} has exceeded warning threshold: ${value.toFixed(
-              2
-            )} ${this.sensorConfig.unit}`,
-            "warning"
-          );
-        }
-      });
+        if (!config || !values) continue;
+
+        config.axes.forEach((axis) => {
+          const value = values[axis];
+          if (value === undefined) return;
+
+          if (value > config.criticalThreshold[axis]) {
+            highestSeverity = "danger";
+            statusText = "Critical";
+            this.showAlert(
+              "Critical Alert",
+              `${
+                config.name
+              } ${axis.toUpperCase()} has exceeded critical threshold: ${value.toFixed(
+                2
+              )} ${config.unit}`,
+              "danger"
+            );
+          } else if (
+            value > config.warningThreshold[axis] &&
+            highestSeverity !== "danger"
+          ) {
+            highestSeverity = "warning";
+            statusText = "Warning";
+            this.showAlert(
+              "Warning Alert",
+              `${
+                config.name
+              } ${axis.toUpperCase()} has exceeded warning threshold: ${value.toFixed(
+                2
+              )} ${config.unit}`,
+              "warning"
+            );
+          }
+        });
+      }
 
       this.machineStatus = {
         text: statusText,
@@ -503,18 +713,21 @@ export default {
 
     async loadThresholds() {
       try {
-        await this.fetchThresholds({
-          machineId: this.id,
-          sensorId: "ACCEL001",
-        });
+        for (const sensorType of this.sensorTypes) {
+          const config = this.sensorConfigs[sensorType];
+          await this.fetchThresholds({
+            machineId: this.id,
+            sensorId: config.sensorId,
+          });
 
-        // Update local sensor config with fetched thresholds
-        if (this.currentThresholds) {
-          this.sensorConfig = {
-            ...this.sensorConfig,
-            warningThreshold: this.currentThresholds.warningThreshold,
-            criticalThreshold: this.currentThresholds.criticalThreshold,
-          };
+          // Update local sensor config with fetched thresholds
+          if (this.currentThresholds) {
+            this.sensorConfigs[sensorType] = {
+              ...this.sensorConfigs[sensorType],
+              warningThreshold: this.currentThresholds.warningThreshold,
+              criticalThreshold: this.currentThresholds.criticalThreshold,
+            };
+          }
         }
       } catch (error) {
         this.showAlert(
@@ -557,8 +770,11 @@ export default {
         customRange: config.customRange,
         includeAlerts: config.includeAlerts ? this.alertHistory : undefined,
         metadata: {
-          sensorId: "ACCEL001",
-          unit: this.sensorConfig.unit,
+          sensors: this.sensorTypes.map((type) => ({
+            id: this.sensorConfigs[type].sensorId,
+            name: this.sensorConfigs[type].name,
+            unit: this.sensorConfigs[type].unit,
+          })),
           exportDate: new Date().toISOString(),
         },
       };

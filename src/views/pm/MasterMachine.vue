@@ -59,7 +59,7 @@
               <TableMachine
                 v-else
                 :machines="paginatedMachines"
-                :station-id="selectedStation"
+                :station-id="selectedStation || ''"
                 @refresh="handleTableRefresh"
               ></TableMachine>
             </CCol>

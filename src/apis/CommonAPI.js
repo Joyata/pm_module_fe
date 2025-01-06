@@ -158,7 +158,6 @@ export default {
     const formattedParams = {
       ...params,
       id: id,
-      user_id: user?._id,
     };
 
     return handleResponse(
@@ -173,7 +172,6 @@ export default {
       () =>
         api.put(`${url}?id=${id}`, {
           id: id,
-          user_id: user?._id,
         }),
       callback
     );

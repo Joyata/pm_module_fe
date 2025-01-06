@@ -266,6 +266,7 @@ export default {
       previewPhotoUrl: null,
       ngItems: [],
       loading: false,
+      notes: "",
     };
   },
 

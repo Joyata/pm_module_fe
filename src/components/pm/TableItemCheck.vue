@@ -42,21 +42,23 @@
             <CTableDataCell>{{
               getToolName(itemcheck.tools_id)
             }}</CTableDataCell>
-            <CTableDataCell class="d-flex gap-2 justify-content-center">
-              <CButton
-                color="info"
-                class="text-white"
-                size="sm"
-                @click="openEditModal(itemcheck)"
-                >Edit</CButton
-              >
-              <CButton
-                color="danger"
-                class="text-white"
-                size="sm"
-                @click="openDeleteModal(itemcheck)"
-                >Delete</CButton
-              >
+            <CTableDataCell class="text-center">
+              <div class="action-buttons">
+                <CButton
+                  color="info"
+                  class="text-white me-2"
+                  size="sm"
+                  @click="openEditModal(itemcheck)"
+                  >Edit</CButton
+                >
+                <CButton
+                  color="danger"
+                  class="text-white"
+                  size="sm"
+                  @click="openDeleteModal(itemcheck)"
+                  >Delete</CButton
+                >
+              </div>
             </CTableDataCell>
           </CTableRow>
         </CTableBody>
@@ -470,3 +472,14 @@ export default {
   },
 };
 </script>
+
+<style scoped>
+.action-buttons {
+  display: flex;
+  justify-content: center;
+}
+
+.action-buttons .btn {
+  padding: 0.25rem 0.5rem;
+}
+</style>

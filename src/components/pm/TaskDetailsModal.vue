@@ -443,14 +443,16 @@ export default {
 
         this.loading = true;
 
+        const updates = {
+          id: this.workOrder._id,
+          user_id: this.editForm.assignedTo || null,
+        };
+
+        console.log("Sending updates to store:", updates);
+
         const success = await this.updateWorkOrder({
           workOrderId: this.workOrder._id,
-          updates: {
-            id: this.workOrder._id,
-            data: {
-              user_id: this.editForm.assignedTo || null,
-            },
-          },
+          updates,
         });
 
         console.log("Assignment update response:", success);
