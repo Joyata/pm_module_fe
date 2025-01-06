@@ -38,7 +38,7 @@
             getMachineName(checksheet.kanban_id)
           }}</CTableDataCell>
           <CTableDataCell>{{
-            getUserName(checksheet.created_by)
+            getUserName(checksheet.team_member)
           }}</CTableDataCell>
           <CTableDataCell class="text-center">{{
             checksheet.itemcheck?.length || 0
@@ -213,13 +213,20 @@ export default {
 
     formatDate(date) {
       if (!date) return "-";
-      const formattedDate = new Date(date).toLocaleDateString("en-GB", {
-        day: "2-digit",
-        month: "2-digit",
-        year: "numeric",
-      }); // Use toLocaleDateString for consistent comparison
-      console.log(formattedDate);
-      return formattedDate;
+      try {
+        // Handle both ISO strings and Date objects
+        const dateObj = typeof date === "string" ? new Date(date) : date;
+        if (isNaN(dateObj.getTime())) return "-"; // Invalid date
+
+        return dateObj.toLocaleDateString("en-GB", {
+          day: "2-digit",
+          month: "2-digit",
+          year: "numeric",
+        });
+      } catch (error) {
+        console.error("Error formatting date:", error);
+        return "-";
+      }
     },
 
     getStatusColor(status) {

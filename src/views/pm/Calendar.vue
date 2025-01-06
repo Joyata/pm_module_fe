@@ -159,6 +159,7 @@
     :work-order="selectedWorkOrder"
     @close="showDetailsModal = false"
     @assign="handleAssignExisting"
+    @refresh="handleRefresh"
   />
 
   <Notifications

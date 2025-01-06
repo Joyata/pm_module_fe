@@ -1,5 +1,6 @@
 import { toast } from "vue-sonner";
 import api from "@/apis/CommonAPI";
+import { update } from "lodash";
 
 export default {
   namespaced: true,
@@ -32,6 +33,9 @@ export default {
   mutations: {
     SET_LOADING(state, isLoading) {
       state.loading = isLoading;
+    },
+    RESET_LOADING(state) {
+      state.loading = false;
     },
     SET_ERROR(state, error) {
       state.error = error;
@@ -83,14 +87,27 @@ export default {
       }
       console.log("🔄 Final filters state:", state.filters);
     },
+    ADD_WORK_ORDER(state, workOrder) {
+      state.workOrders.push(workOrder);
+    },
     UPDATE_WORK_ORDER(state, { workOrderId, updates }) {
       const index = state.workOrders.findIndex((wo) => wo._id === workOrderId);
       if (index !== -1) {
-        state.workOrders[index] = { ...state.workOrders[index], ...updates };
+        // Map API fields to local state fields
+        const mappedUpdates = {
+          ...updates,
+          date: updates.work_dt || updates.date || state.workOrders[index].date,
+          assignedTo:
+            updates.user_id ||
+            updates.assignedTo ||
+            state.workOrders[index].assignedTo, // Map user_id to assignedTo
+          status: updates.status || state.workOrders[index].status,
+        };
+        state.workOrders[index] = {
+          ...state.workOrders[index],
+          ...mappedUpdates,
+        };
       }
-    },
-    ADD_WORK_ORDER(state, workOrder) {
-      state.workOrders.push(workOrder);
     },
     DELETE_WORK_ORDER(state, workOrderId) {
       state.workOrders = state.workOrders.filter(
@@ -201,7 +218,10 @@ export default {
             return keep;
           })
           .map((workOrder) => {
-            console.log(`🔄 Processing work order: ${workOrder._id}`);
+            console.log(`🔄 Processing work order: ${workOrder._id}`, {
+              user_id: workOrder.user_id,
+              formatted_assignedTo: workOrder.user_id || null,
+            });
             const kanban = state.kanbans.find(
               (k) => k._id === workOrder.kanban_id
             );
@@ -301,17 +321,51 @@ export default {
     },
 
     // Update work order (assign/edit)
-    async updateWorkOrder({ commit }, { workOrderId, updates }) {
-      commit("SET_LOADING", true);
+    async updateWorkOrder({ commit, dispatch }, { workOrderId, updates }) {
       try {
+        console.log("Updating work order:", { workOrderId, updates });
+
+        // Prepare API updates
+        const apiUpdates = {
+          id: workOrderId,
+          data: updates.data || {},
+          ...(updates.date && { date: updates.date }),
+          ...(updates.status && { status: updates.status }),
+        };
+
+        console.log("Prepared API updates:", apiUpdates);
+
+        // commit("SET_LOADING", true);
         const response = await api.put(
           "/kanban/edit-work-order",
           workOrderId,
-          updates
+          apiUpdates
         );
 
+        console.log("API Response:", response.data);
+
         if (response?.data?.status === 200) {
-          commit("UPDATE_WORK_ORDER", { workOrderId, updates });
+          // Update local state with consistent mapping
+          const localUpdates = {
+            ...updates,
+            date: updates.date || updates.work_dt,
+            assignedTo: update.data?.user_id,
+            status: updates.status,
+          };
+
+          console.log("Updating local state with:", localUpdates);
+
+          commit("UPDATE_WORK_ORDER", {
+            workOrderId,
+            updates: {
+              ...updates,
+              updates: localUpdates,
+            },
+          });
+
+          // Refresh work orders to ensure consistency
+          await dispatch("fetchWorkOrders");
+
           toast.success("Work order updated successfully");
           return true;
         }
@@ -323,7 +377,7 @@ export default {
         toast.error(error.message);
         return false;
       } finally {
-        commit("SET_LOADING", false);
+        commit("RESET_LOADING");
       }
     },
 

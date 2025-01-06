@@ -120,8 +120,8 @@ export default {
             _id: submission._id,
             kanban_id: submission.kanban_id,
             work_order_id: submission.work_order_id,
-            created_by: submission.created_by, // Team member who submitted
-            created_dt: submission.created_dt,
+            created_by: submission.created_by || submission.submitted_by, // Team member who submitted
+            created_dt: submission.created_dt || submission.submitted_dt,
             team_member: submission.work_order?.user_id,
             team_leader: submission.work_order?.created_by,
             itemcheck: submission.itemcheck.map((item) => ({

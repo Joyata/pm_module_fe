@@ -39,23 +39,25 @@
               <!-- Date Section -->
               <CCol :sm="6">
                 <div class="info-item">
-                  <div class="info-label d-flex justify-content-between">
-                    <span>Scheduled Date</span>
-                    <CButton
-                      v-if="
-                        workOrder.status === 'PLAN' ||
-                        (workOrder.status === 'DELAY' && !isEditingDate)
-                      "
-                      color="info"
-                      size="sm"
-                      @click="startEditingDate"
-                    >
-                      <CIcon icon="cil-pencil" size="sm" />
-                    </CButton>
-                  </div>
+                  <div class="info-label">Scheduled Date</div>
                   <div class="info-value">
                     <template v-if="!isEditingDate">
-                      {{ formatDate(workOrder.date) }}
+                      <div
+                        class="d-flex justify-content-between align-items-center"
+                      >
+                        <span>{{ formatDate(workOrder.date) }}</span>
+                        <CButton
+                          v-if="
+                            workOrder.status === 'PLAN' ||
+                            workOrder.status === 'DELAY'
+                          "
+                          color="info"
+                          size="sm"
+                          @click="startEditingDate"
+                        >
+                          <CIcon icon="cil-pencil" size="sm" />
+                        </CButton>
+                      </div>
                     </template>
                     <template v-else>
                       <CInputGroup size="sm">
@@ -63,11 +65,21 @@
                           type="date"
                           v-model="editForm.date"
                           :min="minDate"
+                          :disabled="loading"
                         />
-                        <CButton color="success" @click="saveDate">
+                        <CButton
+                          color="success"
+                          @click="saveDate"
+                          :disabled="loading"
+                        >
+                          <CSpinner v-if="loading" size="sm" />
                           <CIcon icon="cil-check" size="sm" />
                         </CButton>
-                        <CButton color="danger" @click="cancelEditDate">
+                        <CButton
+                          color="danger"
+                          @click="cancelEditDate"
+                          :disabled="loading"
+                        >
                           <CIcon icon="cil-x" size="sm" />
                         </CButton>
                       </CInputGroup>
@@ -114,6 +126,7 @@
                         <CFormSelect
                           v-model="editForm.assignedTo"
                           :state="validationState.assignedTo"
+                          :disabled="loading"
                         >
                           <option value="">Select Team Member</option>
                           <option
@@ -124,10 +137,19 @@
                             {{ member.username }}
                           </option>
                         </CFormSelect>
-                        <CButton color="success" @click="saveAssignment">
+                        <CButton
+                          color="success"
+                          @click="saveAssignment"
+                          :disabled="loading"
+                        >
+                          <CSpinner v-if="loading" size="sm" />
                           <CIcon icon="cil-check" size="sm" />
                         </CButton>
-                        <CButton color="danger" @click="cancelEditAssignment">
+                        <CButton
+                          color="danger"
+                          @click="cancelEditAssignment"
+                          :disabled="loading"
+                        >
                           <CIcon icon="cil-x" size="sm" />
                         </CButton>
                       </CInputGroup>
@@ -172,12 +194,18 @@
           color="danger"
           variant="outline"
           @click="markAsDelayed"
+          :disabled="loading"
         >
-          Mark as Delayed
+          <CSpinner v-if="loading" size="sm" />
+          <span>Mark as Delayed</span>
         </CButton>
-        <CButton color="primary" @click="confirmDelete">Delete</CButton>
+        <CButton color="primary" @click="confirmDelete" :disabled="loading"
+          >Delete</CButton
+        >
       </div>
-      <CButton color="secondary" @click="$emit('close')">Close</CButton>
+      <CButton color="secondary" @click="$emit('close')" :disabled="loading"
+        >Close</CButton
+      >
     </CModalFooter>
   </CModal>
 </template>
@@ -219,7 +247,7 @@ export default {
 
   computed: {
     ...mapGetters("user", ["allUsers"]),
-    ...mapGetters("schedule"),
+    ...mapGetters("schedule", ["getLoading"]),
 
     availableTeamMembers() {
       if (!this.workOrder) return [];
@@ -318,50 +346,77 @@ export default {
 
     // Date editing methods
     startEditingDate() {
-      this.editForm.date = this.workOrder.date;
+      // Convert DD-MM-YYYY to YYYY-MM-DD for input
+      if (this.workOrder.date) {
+        const [day, month, year] = this.workOrder.date.split("-");
+        this.editForm.date = `${year}-${month}-${day}`;
+      } else {
+        this.editForm.date = "";
+      }
       this.isEditingDate = true;
       this.dateValidationMessage = "";
     },
 
     async saveDate() {
-      if (!this.editForm.date) {
-        this.dateValidationMessage = "Please select a date";
-        return;
-      }
-
-      // // Validate date based on period
-      // if (
-      //   !this.isDateValid(
-      //     this.editForm.date,
-      //     this.workOrder.period,
-      //     this.workOrder.kanbanId
-      //   )
-      // ) {
-      //   this.dateValidationMessage =
-      //     "Selected date is too far from recommended maintenance date";
-      //   return;
-      // }
-
       try {
+        if (!this.editForm.date) {
+          this.dateValidationMessage = "Please select a date";
+          return;
+        }
+
+        this.loading = true;
+        console.log("Starting date update with form data:", this.editForm);
+
+        // Convert YYYY-MM-DD to proper Date object
+        const dateObj = new Date(this.editForm.date);
+
+        // Adjust for GMT+7
+        const jakartaOffset = 7 * 60;
+        const localOffset = dateObj.getTimezoneOffset();
+        const totalOffset = jakartaOffset + localOffset;
+
+        dateObj.setMinutes(dateObj.getMinutes() + totalOffset);
+
+        dateObj.setHours(7, 0, 0, 0);
+
+        const formattedDate = dateObj.toISOString();
+
+        console.log("Formatted date for API:", formattedDate);
+
         const success = await this.updateWorkOrder({
           workOrderId: this.workOrder._id,
           updates: {
-            work_dt: this.formatDateForAPI(this.editForm.date),
+            id: this.workOrder._id,
+            data: {},
+            date: formattedDate,
           },
         });
 
+        console.log("Date update response:", success);
+
         if (success) {
-          this.isEditingDate = false;
+          await Swal.fire({
+            title: "Success",
+            text: "Date updated successfully",
+            icon: "success",
+            timer: 2000,
+            showConfirmButton: false,
+          });
           this.$emit("refresh");
+          this.handleClose();
         }
       } catch (error) {
         console.error("Error updating date:", error);
+      } finally {
+        this.loading = false;
       }
     },
 
     cancelEditDate() {
       this.isEditingDate = false;
+      this.editForm.date = "";
       this.dateValidationMessage = "";
+      this.loading = false;
     },
 
     // Assignment editing methods
@@ -372,43 +427,90 @@ export default {
 
     async saveAssignment() {
       try {
+        console.log("Starting assignment update:", {
+          currentAssignedTo: this.workOrder.assignedTo,
+          newAssignedTo: this.editForm.assignedTo,
+        });
+
+        if (!this.editForm.assignedTo) {
+          await Swal.fire({
+            title: "Error",
+            text: "Please select a team member",
+            icon: "error",
+          });
+          return;
+        }
+
+        this.loading = true;
+
         const success = await this.updateWorkOrder({
           workOrderId: this.workOrder._id,
           updates: {
-            user_id: this.editForm.assignedTo || null,
+            id: this.workOrder._id,
+            data: {
+              user_id: this.editForm.assignedTo || null,
+            },
           },
         });
 
+        console.log("Assignment update response:", success);
+
         if (success) {
-          this.isEditingAssignment = false;
+          await Swal.fire({
+            title: "Success",
+            text: "Assignment updated successfully",
+            icon: "success",
+            timer: 2000,
+            showConfirmButton: false,
+          });
           this.$emit("refresh");
+          this.handleClose();
         }
       } catch (error) {
         console.error("Error updating assignment:", error);
+      } finally {
+        this.loading = false;
       }
     },
 
     cancelEditAssignment() {
       this.isEditingAssignment = false;
       this.editForm.assignedTo = "";
+      this.loading = false;
     },
 
     // Delay handling
     async markAsDelayed() {
       try {
+        this.loading = true;
+        console.log("Marking work order as delayed:", this.workOrder._id);
+
         const success = await this.updateWorkOrder({
           workOrderId: this.workOrder._id,
           updates: {
+            id: this.workOrder._id,
+            data: {},
             status: "DELAY",
           },
         });
 
+        console.log("Mark as delayed response:", success);
+
         if (success) {
+          await Swal.fire({
+            title: "Success",
+            text: "Work order marked as delayed",
+            icon: "success",
+            timer: 2000,
+            showConfirmButton: false,
+          });
           this.$emit("close");
           this.$emit("refresh");
         }
       } catch (error) {
         console.error("Error marking as delayed:", error);
+      } finally {
+        this.loading = false;
       }
     },
 
@@ -430,6 +532,17 @@ export default {
         }
       }
     },
+
+    handleClose() {
+      this.loading = false;
+      this.isEditingDate = false;
+      this.isEditingAssignment = false;
+      this.editForm = {
+        date: "",
+        assignedTo: "",
+      };
+      this.$emit("close");
+    },
   },
 
   watch: {
@@ -448,6 +561,17 @@ export default {
           };
         }
       },
+    },
+    visible(newVal) {
+      if (!newVal) {
+        this.loading = false;
+        this.isEditingDate = false;
+        this.isEditingAssignment = false;
+        this.editForm = {
+          date: "",
+          assignedTo: "",
+        };
+      }
     },
   },
 };

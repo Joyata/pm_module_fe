@@ -493,6 +493,7 @@ export default {
           kanban_id: this.selectedActivity.kanbanId,
           work_order_id: this.selectedActivity.workOrderId,
           created_by: this.selectedActivity.assignedTo,
+          created_dt: new Date().toISOString(),
           status: "COMPLETED",
         };
 
