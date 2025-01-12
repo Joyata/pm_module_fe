@@ -741,7 +741,26 @@ export default {
     // Export Functions
     async handleExport(config) {
       try {
-        let data = this.prepareExportData(config);
+        // Prepare the data based on the selected time range
+        let data;
+
+        if (config.timeRange === "custom") {
+          const start = new Date(config.customRange.startTime);
+          const end = new Date(config.customRange.endTime);
+          await this.fetchDataWithRange(start, end);
+          data = this.prepareExportData(config);
+        } else if (config.range === "current") {
+          data = this.prepareExportData(config);
+        } else {
+          // Fetch historical data for the selected range
+          const endTime = new Date();
+          const startTime = new Date(
+            endTime - this.getTimeRangeInSeconds(config.range) * 1000
+          );
+          await this.fetchDataWithRange(startTime, endTime);
+          data = this.prepareExportData(config);
+        }
+
         await this.$store.dispatch("exports/exportData", {
           data,
           format: config.format,
@@ -756,28 +775,69 @@ export default {
       } catch (error) {
         this.showAlert(
           "Export Failed",
-          "Failed to export data. Please try again.",
+          error.message || "Failed to export data. Please try again.",
           "danger"
         );
       }
     },
 
     prepareExportData(config) {
-      return {
+      const data = {
         machineId: this.id,
         sensorData: this.sensorData,
-        timeRange: config.timeRange,
-        customRange: config.customRange,
-        includeAlerts: config.includeAlerts ? this.alertHistory : undefined,
         metadata: {
           sensors: this.sensorTypes.map((type) => ({
             id: this.sensorConfigs[type].sensorId,
             name: this.sensorConfigs[type].name,
             unit: this.sensorConfigs[type].unit,
+            thresholds: {
+              warning: this.sensorConfigs[type].warningThreshold,
+              critical: this.sensorConfigs[type].criticalThreshold,
+            },
           })),
           exportDate: new Date().toISOString(),
+          timeRange:
+            config.timeRange === "custom"
+              ? `${config.customRange.startTime} to ${config.customRange.endTime}`
+              : config.range,
         },
       };
+
+      // Include alerts if requested
+      if (config.includeAlerts) {
+        data.alertHistory = this.alertHistory;
+      }
+
+      // Include statistics if requested
+      if (config.includeStats) {
+        data.statistics = this.calculateStatistics();
+      }
+
+      return data;
+    },
+
+    calculateStatistics() {
+      const stats = {};
+
+      this.sensorTypes.forEach((sensorType) => {
+        stats[sensorType] = {};
+        const config = this.sensorConfigs[sensorType];
+
+        config.axes.forEach((axis) => {
+          const values = this.sensorData[sensorType][axis].map(
+            (reading) => reading.y
+          );
+          stats[sensorType][axis] = {
+            min: Math.min(...values),
+            max: Math.max(...values),
+            avg: values.reduce((a, b) => a + b, 0) / values.length,
+            warningThreshold: config.warningThreshold[axis],
+            criticalThreshold: config.criticalThreshold[axis],
+          };
+        });
+      });
+
+      return stats;
     },
   },
 };

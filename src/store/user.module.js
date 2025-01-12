@@ -317,6 +317,7 @@ export default {
             },
           }
         );
+        console.log("📥 API Response:", response.data);
 
         if (response?.data?.status === 200) {
           // Create the path based on the user ID and filename

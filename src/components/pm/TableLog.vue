@@ -230,17 +230,7 @@ export default {
     },
 
     getEntityColor(collection) {
-      const colors = {
-        itemcheck: "purple",
-        tools: "warning",
-        kanban: "info",
-        users: "success",
-        spare_part: "danger",
-        machine: "primary",
-        station: "dark",
-        line: "secondary",
-      };
-      return colors[collection] || "light";
+      return "success";
     },
 
     getItemName(log) {

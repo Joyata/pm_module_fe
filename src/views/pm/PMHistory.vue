@@ -25,7 +25,6 @@
                 :disabled="!selectedStation"
               >
                 <option value="ALL">All Status</option>
-                <option value="PENDING">PENDING</option>
                 <option value="APPROVED">APPROVED</option>
                 <option value="REJECTED">REJECTED</option>
               </CFormSelect>
@@ -41,7 +40,7 @@
               >
                 <option value="ALL">All Kanbans</option>
                 <option
-                  v-for="kanban in uniqueKanbanNos"
+                  v-for="kanban in uniqueKanbanNosInHistory"
                   :key="kanban"
                   :value="kanban"
                 >
@@ -60,7 +59,7 @@
               >
                 <option value="ALL">All Machines</option>
                 <option
-                  v-for="machine in uniqueMachineNames"
+                  v-for="machine in uniqueMachineNamesInHistory"
                   :key="machine"
                   :value="machine"
                 >
@@ -98,9 +97,12 @@
 
           <!-- PM History Table -->
           <TablePMHistory
-            :pm-history="filteredPMHistory"
+            :pmHistory="filteredPMHistory"
             :currentPage="currentPage"
             :itemsPerPage="itemsPerPage"
+            :loading="isLoading"
+            @refresh="fetchChecksheets"
+            @update:totalPages="updateTotalPages"
           ></TablePMHistory>
 
           <!-- Pagination Controls -->
@@ -157,6 +159,7 @@ export default {
   },
   data() {
     return {
+      loading: false,
       currentPage: 1,
       itemsPerPage: 5,
       totalPages: 0,
@@ -166,31 +169,31 @@ export default {
       selectedStation: null,
       filters: {
         status: "ALL",
-        kanbanNo: "",
-        machine: "",
+        kanbanNo: "ALL",
+        machineName: "ALL",
       },
     };
   },
 
-  async created() {
-    await this.$store.dispatch(
-      "notifications/initializeNotifications",
-      this.user?.role
-    );
-  },
-
   computed: {
     ...mapState("auth", ["user"]),
-    ...mapGetters("checksheets", ["pmHistory"]),
+    ...mapGetters("checksheets", [
+      "filteredReviewedChecksheets",
+      "uniqueKanbanNosInHistory",
+      "uniqueMachineNamesInHistory",
+      "isLoading",
+    ]),
     ...mapGetters("notifications", ["getUnreadNotifications"]),
 
     filteredPMHistory() {
-      let filtered = this.pmHistory;
+      let filtered = [...this.filteredReviewedChecksheets];
+      console.log("Filtered PM History:", filtered);
 
-      if (this.dateRange) {
+      // Apply date range filter
+      if (this.dateRange && this.dateRange.length === 2) {
         const [startDate, endDate] = this.dateRange;
         filtered = filtered.filter((item) => {
-          const itemDate = new Date(item.date);
+          const itemDate = new Date(item.created_dt);
           return itemDate >= startDate && itemDate <= endDate;
         });
       }
@@ -202,16 +205,13 @@ export default {
       return this.getUnreadNotifications.length;
     },
 
-    uniqueKanbanNos() {
-      // return [...new Set(this.pmHistory.map((item) => item.kanbanNo))];
-    },
-
-    uniqueMachineNames() {
-      // return [...new Set(this.pmHistory.map((item) => item.machineName))];
+    isLoading() {
+      return this.$store.getters["checksheets/isLoading"];
     },
   },
+
   methods: {
-    ...mapActions("checksheets", ["fetchChecksheets"]),
+    ...mapActions("checksheets", ["fetchPMHistory"]),
 
     // Handle search from SearchFilter
     async handleSearch(searchParams) {
@@ -220,6 +220,10 @@ export default {
       // Store the complete location hierarchy
       this.locationHierarchy = searchParams;
       this.selectedStation = searchParams.station_id;
+    },
+
+    updateTotalPages(newTotalPages) {
+      this.totalPages = newTotalPages;
     },
 
     nextPage() {
@@ -253,6 +257,7 @@ export default {
     },
 
     handleFilterChange() {
+      this.$store.dispatch("checksheets/updateFilters", this.filters);
       this.currentPage = 1; // Reset to first page when filters change
     },
 
@@ -272,9 +277,41 @@ export default {
     toggleNotificationsModal() {
       this.showNotificationsModal = !this.showNotificationsModal;
     },
+
+    async initializeComponent() {
+      this.loading = true;
+      try {
+        await Promise.all([
+          this.$store.dispatch(
+            "notifications/initializeNotifications",
+            this.user?.role
+          ),
+          this.fetchChecksheets(),
+        ]);
+      } catch (error) {
+        console.error("Error initializing component:", error);
+      } finally {
+        this.loading = false;
+      }
+    },
   },
   mounted() {
-    this.fetchChecksheets();
+    this.initializeComponent();
+    // Initialize filters
+    this.filters = {
+      status: "ALL",
+      kanbanNo: "ALL",
+      machineName: "ALL",
+    };
+  },
+
+  watch: {
+    filters: {
+      deep: true,
+      handler(newFilters) {
+        this.$store.dispatch("checksheets/updateFilters", newFilters);
+      },
+    },
   },
 };
 </script>

@@ -95,6 +95,8 @@
 </template>
 
 <script>
+import { mapState, mapActions, mapGetters } from "vuex";
+
 export default {
   name: "ExportModal",
 
@@ -135,6 +137,11 @@ export default {
   },
 
   computed: {
+    ...mapState({
+      isLoading: (state) => state.exports.isExporting,
+      exportError: (state) => state.exports.error,
+    }),
+
     isExportValid() {
       if (this.exportTimeRange === "custom") {
         return (
@@ -144,6 +151,14 @@ export default {
         );
       }
       return true;
+    },
+  },
+
+  watch: {
+    exportError(error) {
+      if (error) {
+        this.$emit("error", error);
+      }
     },
   },
 
@@ -159,8 +174,6 @@ export default {
 
     async handleExport() {
       try {
-        this.isLoading = true;
-
         const exportConfig = {
           timeRange: this.exportTimeRange,
           range: this.exportRange,
@@ -180,9 +193,7 @@ export default {
         this.handleClose();
       } catch (error) {
         console.error("Export failed:", error);
-        // You might want to show an error notification here
-      } finally {
-        this.isLoading = false;
+        this.$emit("error", error.message);
       }
     },
 

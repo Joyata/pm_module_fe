@@ -45,10 +45,10 @@
           }}</CTableDataCell>
           <CTableDataCell class="text-center">
             <CBadge
-              :color="getStatusColor(checksheet.work_order?.status)"
+              :color="getStatusColor(checksheet.work_order?.review_status)"
               shape="rounded-pill"
             >
-              {{ checksheet.work_order?.status || "PENDING" }}
+              {{ checksheet.work_order?.review_status }}
             </CBadge>
           </CTableDataCell>
           <CTableDataCell class="text-center">
@@ -57,7 +57,7 @@
               style="background-color: blue"
               size="sm"
               @click="viewChecksheet(checksheet)"
-              :disabled="checksheet.work_order?.status === 'REVIEWED'"
+              :disabled="checksheet.work_order?.review_status !== 'PENDING'"
             >
               Review
             </CButton>
@@ -373,6 +373,7 @@ export default {
                 ? `${process.env.VUE_APP_API_URL}/uploads/itemcheck/${item.filename}`
                 : null,
               status: null,
+              review_status: null,
               result: this.determineResult(
                 item.value,
                 itemcheckDetails?.min,

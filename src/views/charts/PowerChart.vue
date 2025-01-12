@@ -20,10 +20,10 @@
         <!-- Current Values Component -->
         <div class="mt-2">
           <span v-for="axis in availableAxes" :key="axis" class="me-3">
-            {{ axis.toUpperCase() }} Axis:
+            {{ axis.charAt(0).toUpperCase() + axis.slice(1) }}:
             <span :class="getSensorValueClass(axis, currentValues[axis])">
               {{ currentValues[axis]?.toFixed(2) || "0.00" }}
-              {{ sensorConfig.unit }}
+              {{ getAxisUnit(axis) }}
             </span>
           </span>
         </div>
@@ -31,8 +31,8 @@
       <!-- Max Values Display -->
       <div class="text-end">
         <div v-for="axis in availableAxes" :key="axis" class="small text-muted">
-          {{ axis.toUpperCase() }} Max: {{ getMaxValue(axis) }}
-          {{ sensorConfig.unit }}
+          {{ axis.charAt(0).toUpperCase() + axis.slice(1) }} Max:
+          {{ getMaxValue(axis) }} {{ getAxisUnit(axis) }}
         </div>
       </div>
     </CCardHeader>
@@ -132,7 +132,7 @@ export default {
             formatter: (value) => value.toFixed(1),
           },
           title: {
-            text: this.sensorConfig.unit,
+            text: `${this.sensorConfig.name} (${this.sensorConfig.unit})`,
           },
         },
         stroke: {
@@ -148,8 +148,10 @@ export default {
             format: "dd MMM yyyy HH:mm:ss",
           },
           y: {
-            formatter: (value) =>
-              `${value.toFixed(2)} ${this.sensorConfig.unit}`,
+            formatter: (value, { series, seriesIndex, dataPointIndex, w }) => {
+              const axis = this.availableAxes[seriesIndex];
+              return `${value.toFixed(2)} ${this.getAxisUnit(axis)}`;
+            },
           },
           theme: "dark",
         },
@@ -170,7 +172,7 @@ export default {
 
     chartSeries() {
       return this.availableAxes.map((axis) => ({
-        name: `Axis ${axis.toUpperCase()}`,
+        name: `${axis.charAt(0).toUpperCase() + axis.slice(1)}`,
         data: this.sensorData[axis] || [],
         color: this.sensorConfig.colors[axis],
       }));
@@ -178,6 +180,16 @@ export default {
   },
 
   methods: {
+    getAxisUnit(axis) {
+      // Dynamic unit selection based on axis
+      const unitMap = {
+        voltage: "V",
+        current: "A",
+        frequency: "Hz",
+      };
+      return unitMap[axis] || "";
+    },
+
     getMaxValue(axis) {
       if (!this.sensorData[axis]) return "0.00";
       return Math.max(...this.sensorData[axis].map((d) => d.y)).toFixed(2);
@@ -190,6 +202,12 @@ export default {
       if (value > this.sensorConfig.warningThreshold[axis])
         return "text-warning";
       return "text-success";
+    },
+
+    generateYAxisLabel(axis) {
+      return `${
+        axis.charAt(0).toUpperCase() + axis.slice(1)
+      } (${this.getAxisUnit(axis)})`;
     },
 
     generateThresholdLines() {

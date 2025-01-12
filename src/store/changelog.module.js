@@ -71,10 +71,7 @@ export default {
     async fetchUpdateLogs({ commit }, { collection, id }) {
       try {
         console.log("Fetching update logs:", { collection, id });
-        const response = await api.get(
-          `/asset/log-updated-data?id=676541247a7133870f68f54f`,
-          "?"
-        );
+        const response = await api.get(`/asset/log-updated-data`, "?");
         console.log("Update logs response:", response);
 
         if (response?.data?.status === 200) {
@@ -99,10 +96,7 @@ export default {
     async fetchDeleteLogs({ commit }, { collection, id }) {
       try {
         console.log("Fetching delete logs:", { collection, id });
-        const response = await api.get(
-          `/asset/log-deleted-data?id=676541247a7133870f68f54f`,
-          "?"
-        );
+        const response = await api.get(`/asset/log-deleted-data`, "?");
         console.log("Delete logs response:", response);
 
         if (response?.data?.status === 200) {
@@ -215,16 +209,22 @@ export default {
 
       // Change type filter
       if (state.filters.changeType !== "all") {
-        filtered = filtered.filter(
-          (log) => log.type === state.filters.changeType
-        );
+        filtered = filtered.filter((log) => {
+          if (state.filters.changeType === "edit") {
+            return log.type === "edit";
+          } else if (state.filters.changeType === "delete") {
+            return log.type === "delete";
+          }
+          return true;
+        });
       }
 
       // Modified by filter
       if (state.filters.modifiedBy !== "all") {
         filtered = filtered.filter((log) => {
-          const userId = log.type === "edit" ? log.updated_by : log.deleted_by;
-          return userId === state.filters.modifiedBy;
+          const modifierId =
+            log.type === "edit" ? log.updated_by : log.deleted_by;
+          return modifierId === state.filters.modifiedBy;
         });
       }
 
@@ -238,12 +238,11 @@ export default {
 
       if (ranges[state.filters.dateRange]) {
         filtered = filtered.filter((log) => {
-          // Use created_dt as fallback if updated_dt is null
-          const logDate = new Date(
-            log.type === "edit"
-              ? log.updated_dt || log.created_dt
-              : log.deleted_dt || log.created_dt
-          );
+          // Get the relevant timestamp based on log type
+          const timestamp = log.deleted_by ? log.deleted_dt : log.updated_dt;
+          if (!timestamp) return false;
+
+          const logDate = new Date(timestamp);
           return logDate > ranges[state.filters.dateRange];
         });
       }

@@ -189,7 +189,7 @@
           </CCardHeader>
           <CCardBody>
             <CFormTextarea
-              :value="notes"
+              v-model="notes"
               :rows="3"
               placeholder="Additional notes..."
             ></CFormTextarea>
@@ -496,6 +496,8 @@ export default {
           created_by: this.selectedActivity.assignedTo,
           created_dt: new Date().toISOString(),
           status: "COMPLETED",
+          review_status: "PENDING",
+          notes: this.notes,
         };
 
         Object.entries(basicInfo).forEach(([key, value]) => {

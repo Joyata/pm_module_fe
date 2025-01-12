@@ -89,14 +89,42 @@
           <CPaginationItem :disabled="currentPage === 1" @click="prevPage">
             Previous
           </CPaginationItem>
-          <CPaginationItem
-            v-for="page in totalPages"
-            :key="page"
-            :active="currentPage === page"
-            @click="goToPage(page)"
-          >
-            {{ page }}
+
+          <!-- First Page -->
+          <CPaginationItem :active="currentPage === 1" @click="goToPage(1)">
+            1
           </CPaginationItem>
+
+          <!-- Left ellipsis -->
+          <CPaginationItem v-if="currentPage > 3" disabled>
+            ...
+          </CPaginationItem>
+
+          <!-- Middle pages -->
+          <template v-for="page in visiblePages" :key="page">
+            <CPaginationItem
+              v-if="page !== 1 && page !== totalPages"
+              :active="currentPage === page"
+              @click="goToPage(page)"
+            >
+              {{ page }}
+            </CPaginationItem>
+          </template>
+
+          <!-- Right ellipsis -->
+          <CPaginationItem v-if="currentPage < totalPages - 2" disabled>
+            ...
+          </CPaginationItem>
+
+          <!-- Last Page -->
+          <CPaginationItem
+            v-if="totalPages > 1"
+            :active="currentPage === totalPages"
+            @click="goToPage(totalPages)"
+          >
+            {{ totalPages }}
+          </CPaginationItem>
+
           <CPaginationItem
             :disabled="currentPage === totalPages"
             @click="nextPage"
@@ -162,6 +190,7 @@ import { mapGetters, mapActions } from "vuex";
 import { format } from "date-fns";
 import api from "@/apis/CommonAPI";
 import TableLog from "../../components/pm/TableLog.vue";
+import { CPaginationItem } from "@coreui/vue";
 
 export default {
   name: "ChangeLog",
@@ -174,12 +203,6 @@ export default {
     return {
       showDetailModal: false,
       selectedLog: null,
-      localFilters: {
-        dateRange: "last7days",
-        entityType: "all",
-        changeType: "all",
-        modifiedBy: "all",
-      },
       users: [],
       currentPage: 1,
       itemsPerPage: 5,
@@ -204,6 +227,38 @@ export default {
 
     totalPages() {
       return Math.ceil(this.filteredLogs.length / this.itemsPerPage);
+    },
+
+    visiblePages() {
+      if (this.totalPages <= 7) {
+        // If we have 7 or fewer pages, show all
+        return Array.from({ length: this.totalPages }, (_, i) => i + 1);
+      }
+
+      let pages = [];
+      const current = this.currentPage;
+
+      if (current <= 4) {
+        // Near the start
+        pages = [1, 2, 3, 4, 5];
+      } else if (current >= this.totalPages - 3) {
+        // Near the end
+        pages = Array.from({ length: 5 }, (_, i) => this.totalPages - 4 + i);
+      } else {
+        // In the middle
+        pages = [current - 1, current, current + 1];
+      }
+
+      return pages;
+    },
+
+    localFilters: {
+      get() {
+        return this.currentFilters;
+      },
+      set(newFilters) {
+        this.updateFilters(newFilters);
+      },
     },
   },
 
@@ -237,8 +292,29 @@ export default {
     },
 
     handleFilterChange() {
-      this.updateFilters(this.localFilters);
       this.currentPage = 1; // Reset to first page when filters change
+    },
+
+    async refreshLogs() {
+      this.currentPage = 1;
+      const collections = [
+        "itemcheck",
+        "tools",
+        "kanban",
+        "users",
+        "spare_part",
+        "machine",
+        "station",
+        "line",
+      ];
+
+      try {
+        for (const collection of collections) {
+          await this.loadEntityLogs(collection);
+        }
+      } catch (error) {
+        console.error("Error refreshing logs:", error);
+      }
     },
 
     getModalUserName(userId) {
@@ -323,14 +399,26 @@ export default {
         this.currentPage = page;
       }
     },
+    async initialize() {
+      try {
+        await Promise.all([this.refreshLogs(), this.loadUsers()]);
+      } catch (error) {
+        console.error("Error initializing change log:", error);
+      }
+    },
   },
 
-  async created() {
-    try {
-      await Promise.all([this.refreshLogs(), this.loadUsers()]);
-    } catch (error) {
-      console.error("Error initializing change log:", error);
-    }
+  created() {
+    // Initialize store filters first
+    this.updateFilters({
+      dateRange: "last7days",
+      entityType: "all",
+      changeType: "all",
+      modifiedBy: "all",
+    });
+
+    // Then load data
+    this.initialize();
   },
 
   beforeDestroy() {

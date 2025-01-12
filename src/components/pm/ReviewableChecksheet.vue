@@ -100,11 +100,29 @@
                     class="d-flex justify-content-center align-items-center p-0"
                   >
                     <div class="photo-wrapper w-100 h-100">
+                      <!-- Show the first image as preview -->
                       <img
-                        :src="require('@/assets/images/defaultImage.png')"
-                        alt="Dummy Photo"
+                        v-if="hasDetections && getLatestDetection?.imageUrl"
+                        :src="getLatestDetection.imageUrl"
+                        alt="Human Detection Preview"
                         class="captured-photo w-100 h-100"
                       />
+                      <img
+                        v-else
+                        :src="require('@/assets/images/defaultImage.png')"
+                        alt="Default Photo"
+                        class="captured-photo w-100 h-100"
+                      />
+                      <div v-if="hasDetections" class="detection-info">
+                        <div class="people-count">
+                          <CIcon icon="cil-people" />
+                          {{ getLatestDetection?.total_person || 0 }}
+                        </div>
+
+                        <div v-if="detections.length > 1" class="image-counter">
+                          +{{ detections.length - 1 }}
+                        </div>
+                      </div>
                     </div>
                   </CCardBody>
                 </CCard>
@@ -140,13 +158,13 @@
 
               <CTableBody>
                 <CTableRow v-if="loading">
-                  <CTableDataCell class="text-center" colspan="10">
+                  <CTableDataCell class="text-center" colspan="12">
                     <CSpinner component="span" size="sm" aria-hidden="true" />
                     Loading...
                   </CTableDataCell>
                 </CTableRow>
                 <CTableRow v-else-if="checksheet.length <= 0">
-                  <CTableDataCell class="text-center" colspan="10">
+                  <CTableDataCell class="text-center" colspan="12">
                     Data not found</CTableDataCell
                   >
                 </CTableRow>
@@ -264,9 +282,10 @@
           </CCardHeader>
           <CCardBody>
             <CFormTextarea
-              :value="notes"
+              :value="checksheet.notes"
               rows="3"
-              placeholder="Additional notes..."
+              readonly
+              placeholder="No additional notes"
             ></CFormTextarea>
           </CCardBody>
         </CCard>
@@ -329,16 +348,81 @@
     </CModal>
 
     <!-- Human Detection Photo Modal -->
-    <CModal size="lg" :visible="showPhotoModal" @close="closePhotoModal">
+    <CModal
+      size="lg"
+      :visible="showPhotoModal"
+      @close="closePhotoModal"
+      class="photo-modal"
+    >
       <CModalHeader>
-        <CModalTitle>Human Detection</CModalTitle>
+        <CModalTitle>Human Detection Images</CModalTitle>
       </CModalHeader>
       <CModalBody>
-        <img
-          :src="require('@/assets/images/defaultImage.png')"
-          alt="Large Dummy Photo"
-          class="img-fluid"
-        />
+        <div v-if="isLoading" class="text-center py-4">
+          <CSpinner color="primary"></CSpinner>
+          <div class="mt-2">Loading images...</div>
+        </div>
+
+        <CCarousel
+          v-else
+          controls
+          indicators
+          class="human-detection-carousel"
+          :wrap="true"
+          :interval="0"
+          @show="handleSlideShow"
+        >
+          <CCarouselItem
+            v-for="(detection, index) in detections"
+            :key="detection._id"
+            :active="index"
+          >
+            <img
+              :src="detection.imageUrl"
+              class="d-block w-100"
+              :alt="'Human Detection Image' + (index + 1)"
+            />
+            <CCarouselCaption class="d-none d-md-block detection-caption">
+              <div class="detection-details">
+                <h5>Image {{ index + 1 }} of {{ detections.length }}</h5>
+                <span class="detection-time">
+                  {{ detection.detectionTime }}
+                </span>
+              </div>
+              <div class="meta-info">
+                <span class="camera">
+                  <CIcon icon="cil-camera" /> {{ detection.created_by }}
+                </span>
+                <span class="people">
+                  <CIcon icon="cil-people" />
+                  {{ detection.total_person }} person(s) detected
+                </span>
+              </div>
+              <div
+                v-if="detection.detected_face?.length"
+                class="faces-detected mt-2"
+              >
+                <span class="label">Faces detected: </span>
+                <span class="names">{{
+                  detection.detected_face.join(", ")
+                }}</span>
+              </div>
+            </CCarouselCaption>
+          </CCarouselItem>
+          <!-- Show default image if no images available -->
+          <CCarouselItem v-if="detections.length === 0">
+            <div class="no-detections">
+              <img
+                :src="require('@/assets/images/defaultImage.png')"
+                class="d-block w-100"
+                alt="Default Image"
+              />
+              <CCarouselCaption>
+                <h5>No detection images available</h5>
+              </CCarouselCaption>
+            </div>
+          </CCarouselItem>
+        </CCarousel>
       </CModalBody>
     </CModal>
 
@@ -397,7 +481,9 @@
 <script>
 import { mapActions, mapGetters } from "vuex";
 import Swal from "sweetalert2";
-import { CFormTextarea, CSpinner } from "@coreui/vue";
+import { CCarousel, CCarouselItem, CFormTextarea, CSpinner } from "@coreui/vue";
+import api from "@/apis/CommonAPI";
+import { toast } from "vue-sonner";
 
 export default {
   name: "ReviewableChecksheet",
@@ -418,26 +504,40 @@ export default {
       showImageModal: false,
       selectedImage: null,
       selectedItem: null,
-      notes: "",
       isSubmitting: false,
+      itemReviews: new Map(), // Store local review decisions
     };
   },
   computed: {
     ...mapGetters("checksheets", ["selectedChecksheet", "getPart"]),
+    ...mapGetters("yoloDetections", [
+      "allDetections",
+      "isLoading",
+      "hasDetections",
+      "getLatestDetection",
+    ]),
+
     allItemsReviewed() {
       return this.checksheet.items.every(
         (item) => item.status === "approved" || item.status === "rejected"
       );
     },
+
+    detections() {
+      return this.allDetections;
+    },
   },
+
   methods: {
     ...mapActions("checksheets", [
+      "fetchChecksheets",
       "approveChecksheetItem",
       "rejectChecksheetItem",
       "submitChecksheetReview",
       "updateChecksheetStatus",
       "fetchParts",
     ]),
+    ...mapActions("yoloDetections", ["fetchDetections"]),
 
     async fetchPartsData() {
       console.log("Starting fetchPartsData");
@@ -483,37 +583,41 @@ export default {
       return part ? part.part_nm : "-";
     },
 
-    async approveItem(item) {
-      try {
-        await this.approveChecksheetItem({
-          checksheetId: this.checksheet.id,
-          itemId: item.id,
-        });
-        item.status = "approved";
-        Swal.fire("Success", "Item approved successfully", "success");
-      } catch (error) {
-        console.error("Error approving item:", error);
-      }
+    approveItem(item) {
+      console.log("Approving item:", item);
+      // Update local state
+      this.itemReviews.set(item.id, {
+        status: "approved",
+        reason: null,
+      });
+      item.status = "approved";
+      item.rejectionReason = null;
     },
-    async rejectItem() {
-      if (this.currentItem && this.rejectionReason) {
-        try {
-          await this.rejectChecksheetItem({
-            checksheetId: this.checksheet.id,
-            itemId: this.currentItem.id,
-            reason: this.rejectionReason,
-          });
-          this.currentItem.status = "rejected";
-          this.closeRejectModal();
-          Swal.fire("Success", "Item rejected successfully", "success");
-        } catch (error) {
-          console.error("Error rejecting item:", error);
-          Swal.fire("Error", "Failed to reject item", "error");
-        }
+
+    rejectItem() {
+      if (!this.currentItem || !this.rejectionReason) {
+        Swal.fire({
+          icon: "error",
+          title: "Error",
+          text: "Please enter a rejection reason.",
+        });
+        return;
       }
+
+      console.log("Rejecting item:", this.currentItem);
+      // Update local state
+      this.itemReviews.set(this.currentItem.id, {
+        status: "rejected",
+        reason: this.rejectionReason,
+      });
+      this.currentItem.status = "rejected";
+      this.currentItem.rejectionReason = this.rejectionReason;
+
+      this.closeRejectModal();
     },
     showRejectModal(item) {
       this.currentItem = item;
+      this.rejectionReason = "";
       this.showRejectionModal = true;
     },
     closeRejectModal() {
@@ -521,8 +625,9 @@ export default {
       this.rejectionReason = "";
       this.currentItem = null;
     },
-    openPhotoModal() {
+    async openPhotoModal() {
       this.showPhotoModal = true;
+      await this.fetchDetections();
     },
     closePhotoModal() {
       this.showPhotoModal = false;
@@ -534,13 +639,21 @@ export default {
       this.hoveredItemIndex = null;
     },
     cancelAction(item) {
+      // Remove from local state
+      this.itemReviews.delete(item.id);
       item.status = null;
+      item.rejectionReason = null;
       this.hoveredItemIndex = null;
     },
     async submitReview() {
       try {
+        console.log("🚀 Starting submitReview function");
+        console.log("Current checksheet:", this.checksheet);
+
+        // Validate that all items are reviewed
         if (!this.allItemsReviewed) {
-          Swal.fire({
+          console.log("❌ Validation failed: Not all items are reviewed");
+          await Swal.fire({
             icon: "warning",
             title: "Incomplete Review",
             text: "Please review all items before submitting.",
@@ -548,39 +661,165 @@ export default {
           return;
         }
 
-        const reviewData = {
-          kanban_id: this.checksheet.kanban_id,
-          work_order_id: this.checksheet.work_order_id,
-          items: this.checksheet.itemcheck.map((item) => ({
-            itemcheck_id: item._id,
-            status: item.status,
-            remarks: item.status === "rejected" ? item.rejectionReason : "",
-            value: item.value,
-            ocr_value: item.ocr_value,
-          })),
+        console.log("✅ Validation passed: All items are reviewed");
+        this.isSubmitting = true;
+
+        // Show initial loading dialog
+        let currentProgress = 0;
+        console.log("📊 Creating loading dialog");
+        const loadingDialog = Swal.fire({
+          title: "Submitting Review",
+          html: `
+        <div class="progress-wrapper">
+          <div id="progress-text">Preparing submission...</div>
+          <div class="progress">
+            <div id="progress-bar" 
+                 class="progress-bar" 
+                 role="progressbar" 
+                 style="width: 0%">
+            </div>
+          </div>
+        </div>
+      `,
+          allowOutsideClick: false,
+          allowEscapeKey: false,
+          showConfirmButton: false,
+          didOpen: () => {
+            console.log("Dialog opened, showing loading state");
+            Swal.showLoading();
+          },
+        });
+
+        const updateProgress = async (progress, message) => {
+          console.log(`📈 Progress Update: ${progress}% - ${message}`);
+          currentProgress = progress;
+          const progressBar = document.getElementById("progress-bar");
+          const progressText = document.getElementById("progress-text");
+
+          if (progressBar) {
+            progressBar.style.width = `${progress}%`;
+            console.log("Progress bar updated");
+          } else {
+            console.warn("Progress bar element not found");
+          }
+
+          if (progressText) {
+            progressText.textContent = message;
+            console.log("Progress text updated");
+          } else {
+            console.warn("Progress text element not found");
+          }
+
+          await new Promise((resolve) => setTimeout(resolve, 100));
         };
 
-        const response = await api.post(
-          "/kanban/review-checksheet",
-          reviewData
-        );
+        // Start submission process
+        await updateProgress(10, "Starting review submission...");
 
-        if (response.data?.status === 200) {
-          Swal.fire({
-            icon: "success",
-            title: "Review Submitted",
-            text: "The checksheet has been successfully reviewed.",
+        // Process each review
+        console.log("📝 Starting item review process");
+        const itemUpdates = [];
+        const items = this.checksheet.items;
+        console.log(`Total items to process: ${items.length}`);
+
+        for (let i = 0; i < items.length; i++) {
+          const item = items[i];
+          const progress = 10 + Math.floor((i / items.length) * 60);
+          await updateProgress(
+            progress,
+            `Processing item ${i + 1} of ${items.length}...`
+          );
+
+          console.log(`Processing item ${i + 1}:`, {
+            itemId: item.id,
+            status: item.status,
+            rejectionReason: item.rejectionReason,
           });
-          this.$emit("review-submitted");
-          this.goBack();
+
+          // Using CommonAPI.put format: (url, id, params)
+          const reviewResponse = await api.put(
+            "/kanban/review-kanban",
+            this.checksheet._id,
+            {
+              itemcheck_id: item.id,
+              review: item.status,
+              reject: item.rejectionReason || null,
+            }
+          );
+
+          console.log(`Review response for item ${i + 1}:`, reviewResponse);
+          itemUpdates.push(reviewResponse);
         }
+
+        // Check responses
+        console.log("📤 Review responses:", itemUpdates);
+        await updateProgress(70, "Verifying submissions...");
+
+        // Calculate final status
+        console.log("🔄 Calculating final status");
+        await updateProgress(80, "Updating final status...");
+        const hasRejectedItems = items.some(
+          (item) => item.status === "rejected"
+        );
+        const finalStatus = hasRejectedItems ? "REJECTED" : "APPROVED";
+        console.log("Final status calculated:", finalStatus);
+
+        // Update work order status using CommonAPI.put format
+        console.log("📝 Updating work order status");
+        await updateProgress(90, "Finalizing submission...");
+        const workOrderResponse = await api.put(
+          "/kanban/edit-work-order",
+          this.checksheet.work_order_id,
+          {
+            review_status: finalStatus,
+          }
+        );
+        console.log("Work order update response:", workOrderResponse);
+
+        await updateProgress(100, "Submission complete!");
+
+        // Close loading dialog
+        console.log("🔚 Closing loading dialog");
+        Swal.close();
+
+        // Show success message
+        console.log("✅ Showing success message");
+        await Swal.fire({
+          icon: "success",
+          title: "Review Submitted",
+          text: `The checksheet has been ${finalStatus.toLowerCase()}.`,
+          timer: 2000,
+          timerProgressBar: true,
+          showConfirmButton: false,
+        });
+
+        // Refresh data and navigate
+        console.log("🔄 Refreshing data and navigating");
+        await this.fetchChecksheets();
+        this.$emit("review-submitted");
+        this.$emit("back");
       } catch (error) {
-        console.error("Error submitting review:", error);
-        Swal.fire({
+        console.error("❌ Review submission error:", error);
+        console.error("Error details:", {
+          name: error.name,
+          message: error.message,
+          stack: error.stack,
+          response: error.response?.data,
+        });
+
+        // Close any open dialogs
+        Swal.close();
+
+        // Show error message
+        await Swal.fire({
           icon: "error",
           title: "Submission Failed",
-          text: error.response?.data?.message || "Failed to submit review",
+          text: error.message || "Failed to submit review. Please try again.",
+          confirmButtonText: "OK",
         });
+      } finally {
+        console.log("🏁 Submit review process completed");
+        this.isSubmitting = false;
       }
     },
 
@@ -641,7 +880,12 @@ export default {
       this.selectedImage = null;
       this.selectedItem = null;
     },
+
+    handleSlideShow(index) {
+      this.currentSlide = index;
+    },
   },
+
   async mounted() {
     console.log(
       "ReviewableChecksheet mounted with checksheet:",
@@ -651,6 +895,7 @@ export default {
 
   async created() {
     await this.fetchPartsData();
+    await this.fetchDetections();
   },
 
   watch: {
@@ -665,35 +910,42 @@ export default {
 </script>
 
 <style scoped>
-/* .image-preview-modal :deep(.modal-content) {
-  background-color: #1a1a1a;
-  color: #ffffff;
-} */
-/* .image-preview-modal :deep(.modal-header) {
-  background-color: #2d2d2d;
-  border-bottom: 1px solid #404040;
-} */
-.image-preview-modal :deep(.modal-header .btn-close) {
-  color: #ffffff;
-  filter: invert(1) grayscale(100%) brightness(200%);
-}
-.modal-body-dark {
-  background-color: #e6e6e6;
-  padding: 2rem;
-}
-.photo-wrapper {
-  position: relative;
-}
-
-.captured-photo {
-  object-fit: cover;
-  border-radius: 4px;
-}
-
+/* General Layout and Utility Classes */
 .text-white {
   color: white !important;
 }
 
+.text-success {
+  color: #28a745 !important;
+}
+
+.text-danger {
+  color: #dc3545 !important;
+}
+
+/* Card Styles */
+.info-card {
+  height: 160px;
+  transition: transform 0.2s;
+}
+
+.info-card.camera-card:hover {
+  transform: scale(1.02);
+}
+
+.card-label {
+  font-size: 0.9rem;
+  color: #666;
+  margin-bottom: 0.5rem;
+}
+
+.card-value {
+  font-size: 1.5rem !important;
+  font-weight: 600;
+  margin: 0;
+}
+
+/* Table Styles */
 .bg-success {
   background-color: #e6f4ea !important;
   color: #155724 !important;
@@ -703,6 +955,42 @@ export default {
   background-color: #fbe9e7 !important;
   color: #721c24 !important;
 }
+
+/* Photo Preview & Detection Styles */
+.photo-wrapper {
+  position: relative;
+  height: 160px;
+  width: 100%;
+}
+
+.captured-photo {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 4px;
+}
+
+.detection-info {
+  position: absolute;
+  bottom: 8px;
+  right: 8px;
+  display: flex;
+  gap: 8px;
+}
+
+.people-count,
+.image-counter {
+  background: rgba(0, 0, 0, 0.7);
+  color: white;
+  padding: 4px 8px;
+  border-radius: 12px;
+  font-size: 0.875rem;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* Capture Cell in Table */
 .capture-cell {
   display: flex;
   flex-direction: column;
@@ -744,12 +1032,15 @@ export default {
   font-style: italic;
 }
 
-.ocr-value {
-  font-size: 0.875rem;
-  color: #666;
-  display: flex;
-  align-items: center;
-  gap: 0.25rem;
+/* Image Preview Modal */
+.image-preview-modal :deep(.modal-header .btn-close) {
+  color: #ffffff;
+  filter: invert(1) grayscale(100%) brightness(200%);
+}
+
+.modal-body-dark {
+  background-color: #e6e6e6;
+  padding: 2rem;
 }
 
 .preview-container {
@@ -768,13 +1059,6 @@ export default {
   object-fit: contain;
 }
 
-.text-success {
-  color: #28a745 !important;
-}
-
-.text-danger {
-  color: #dc3545 !important;
-}
 .value-comparison-container {
   display: flex;
   justify-content: center;
@@ -804,45 +1088,161 @@ export default {
   justify-content: center;
   gap: 0.5rem;
 }
-.confidence-indicator {
-  margin-top: 0.5rem;
+
+/* Human Detection Modal */
+.photo-modal :deep(.modal-content) {
+  background-color: #1a1a1a;
+}
+
+.photo-modal :deep(.modal-header) {
+  border-bottom: 1px solid #2d2d2d;
+  background-color: #1a1a1a;
+  color: white;
+}
+
+.photo-modal :deep(.btn-close) {
+  filter: invert(1) grayscale(100%) brightness(200%);
+}
+
+/* Carousel Styles */
+.human-detection-carousel {
+  max-height: 70vh;
+}
+
+.human-detection-carousel :deep(img) {
+  max-height: 70vh;
+  object-fit: contain;
+  background: #f8f9fa;
+}
+
+.photo-modal :deep(.carousel-control-prev),
+.photo-modal :deep(.carousel-control-next) {
+  width: 10%;
+  background: linear-gradient(
+    90deg,
+    rgba(0, 0, 0, 0.5) 0%,
+    rgba(0, 0, 0, 0) 100%
+  );
+}
+
+.photo-modal :deep(.carousel-control-next) {
+  background: linear-gradient(
+    -90deg,
+    rgba(0, 0, 0, 0.5) 0%,
+    rgba(0, 0, 0, 0) 100%
+  );
+}
+
+.photo-modal :deep(.carousel-control-prev-icon),
+.photo-modal :deep(.carousel-control-next-icon) {
+  filter: invert(1) grayscale(100%) brightness(200%);
+  width: 2.5rem;
+  height: 2.5rem;
+}
+
+.photo-modal :deep(.carousel-indicators) {
+  margin-bottom: 0;
+}
+
+.photo-modal :deep(.carousel-indicators button) {
+  background-color: #fff;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  margin: 0 4px;
+}
+
+/* Detection Caption Styles */
+.detection-caption {
+  background: rgba(0, 0, 0, 0.7);
+  border-radius: 8px;
+  padding: 16px;
+  text-align: left;
+  margin: 0 32px 32px;
+}
+
+.detection-details {
+  color: white;
+}
+
+.meta-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.meta-header h5 {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+.detection-time {
+  font-size: 0.9rem;
+  opacity: 0.8;
+}
+
+.meta-info {
+  display: flex;
+  gap: 24px;
+  margin-top: 8px;
+  font-size: 0.95rem;
+  color: white;
+}
+
+.meta-info span {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: white;
+}
+
+.faces-detected {
+  font-size: 0.9rem;
+  padding-top: 8px;
+  border-top: 1px solid;
+  color: white;
+}
+
+.faces-detected .label {
+  margin-right: 8px;
+  color: white;
+}
+
+.faces-detected .names {
+  font-weight: 500;
+  color: white;
+}
+
+.no-detections {
   text-align: center;
+  padding: 2rem;
+  background: #f8f9fa;
 }
 
-.confidence-bar {
-  width: 100%;
-  height: 6px;
-  background-color: #2d2d2d;
-  border-radius: 3px;
+/* Progress bar */
+.progress-wrapper {
+  padding: 1rem;
+}
+
+.progress-wrapper #progress-text {
+  margin-bottom: 1rem;
+  text-align: center;
+  color: #666;
+}
+
+.progress {
+  height: 8px;
+  background-color: #f5f5f5;
+  border-radius: 4px;
   overflow: hidden;
+  margin: 0.5rem 0;
 }
 
-.confidence-level {
+.progress-bar {
+  background-color: #0d6efd;
   height: 100%;
   transition: width 0.3s ease;
-}
-
-.confidence-level.high {
-  background-color: #28a745;
-}
-
-.confidence-level.medium {
-  background-color: #ffc107;
-}
-
-.confidence-level.low {
-  background-color: #dc3545;
-}
-
-.confidence-text {
-  font-size: 0.875rem;
-  color: #999;
-  margin-top: 0.25rem;
-}
-
-.best-match {
-  font-size: 0.875rem;
-  color: #999;
-  margin-top: 0.25rem;
 }
 </style>

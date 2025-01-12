@@ -256,10 +256,11 @@ export default {
           checksheet.work_order?.created_by === this.user?._id;
         if (!matchesTeamLeader) return false;
 
-        // Then check status
+        // Then check review_status
         const matchesStatus =
           this.statusFilter === "ALL" ||
-          (checksheet.work_order?.status || "PENDING") === this.statusFilter;
+          (checksheet.work_order?.review_status || "PENDING") ===
+            this.statusFilter;
         if (!matchesStatus) return false;
 
         // Finally check date if selected
@@ -303,13 +304,19 @@ export default {
     statusButtons() {
       const totalCount = this.allChecksheets ? this.allChecksheets.length : 0;
       const pendingCount = this.allChecksheets
-        ? this.allChecksheets.filter((a) => a.status === "PENDING").length
+        ? this.allChecksheets.filter(
+            (c) => c.work_order?.review_status === "PENDING"
+          ).length
         : 0;
       const approvedCount = this.allChecksheets
-        ? this.allChecksheets.filter((a) => a.status === "APPROVED").length
+        ? this.allChecksheets.filter(
+            (c) => c.work_order?.review_status === "APPROVED"
+          ).length
         : 0;
       const rejectedCount = this.allChecksheets
-        ? this.allChecksheets.filter((a) => a.status === "REJECTED").length
+        ? this.allChecksheets.filter(
+            (c) => c.work_order?.review_status === "REJECTED"
+          ).length
         : 0;
       return [
         { label: "TOTAL", status: "ALL", count: totalCount },
@@ -355,18 +362,19 @@ export default {
 
     updateChartData() {
       const userChecksheets =
-        this.allChecksheets?.filter((c) => c.assignedTo === this.user?._id) ||
-        [];
+        this.allChecksheets?.filter(
+          (c) => c.work_order?.created_by === this.user?._id
+        ) || [];
 
       // Update PM Completeness Chart
       const pending = userChecksheets.filter(
-        (c) => c.status === "PENDING"
+        (c) => c.work_order?.review_status === "PENDING"
       ).length;
       const approved = userChecksheets.filter(
-        (c) => c.status === "APPROVED"
+        (c) => c.work_order?.review_status === "APPROVED"
       ).length;
       const rejected = userChecksheets.filter(
-        (c) => c.status === "REJECTED"
+        (c) => c.work_order?.review_status === "REJECTED"
       ).length;
       this.charts[0].series = [approved, pending, rejected];
 
@@ -450,9 +458,18 @@ export default {
   },
 
   watch: {
-    // Add watchers for data changes that should reset pagination
-    statusFilter() {
-      this.currentPage = 1;
+    allChecksheets: {
+      handler() {
+        this.updateChartData();
+      },
+      deep: true,
+    },
+
+    statusFilter: {
+      handler() {
+        this.currentPage = 1;
+        this.updateChartData();
+      },
     },
     selectedDate() {
       this.currentPage = 1;

@@ -14,6 +14,8 @@ import notificationsModule from "./notifications.module";
 import authModule from "./auth.module";
 import changelogModule from "./changelog.module";
 import thresholdModule from "./threshold.module";
+import exportsModule from "./exports.module";
+import yoloDetectionsModule from "./yoloDetections.module";
 
 export default createStore({
   state: {
@@ -48,5 +50,7 @@ export default createStore({
     auth: authModule,
     changelog: changelogModule,
     threshold: thresholdModule,
+    exports: exportsModule,
+    yoloDetections: yoloDetectionsModule,
   },
 });
