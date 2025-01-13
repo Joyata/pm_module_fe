@@ -243,8 +243,6 @@ export default {
         vibration: {
           name: "Vibration",
           unit: "mm/s²",
-          min: -2,
-          max: 12,
           axes: ["x", "y", "z"],
           sensorId: "ACCEL001",
           columnName: "sensor01_acc_xyz",
@@ -267,8 +265,6 @@ export default {
         power: {
           name: "Power",
           unit: "V/A/Hz",
-          min: 0,
-          max: 250,
           axes: ["voltage", "current", "frequency"],
           sensorId: "POWER001",
           columnName: "sensor02_pwr_vcf",
@@ -291,8 +287,6 @@ export default {
         temperature: {
           name: "Temperature",
           unit: "°C",
-          min: 0,
-          max: 150,
           axes: ["celcius"],
           sensorId: "TEMPERATURE001",
           columnName: "sensor03_temp_c",
@@ -358,7 +352,7 @@ export default {
           const config = this.sensorConfigs[sensorType];
           const url = `/ts/read-data?oldest_dt=${start.toISOString()}&newest_dt=${end.toISOString()}&sensor_col=${
             config.columnName
-          }`;
+          }&limit=3600`;
           const response = await api.get(url, "?");
 
           if (response?.data?.data) {
@@ -389,7 +383,7 @@ export default {
           const config = this.sensorConfigs[sensorType];
           const url = `/ts/read-data?oldest_dt=${startTime.toISOString()}&newest_dt=${endTime.toISOString()}&sensor_col=${
             config.columnName
-          }`;
+          }&limit=3600`;
 
           const response = await api.get(url, "?");
 
@@ -429,7 +423,8 @@ export default {
 
           const url = `/ts/read-data?oldest_dt=${newestTimestamp.toISOString()}&sensor_col=${
             config.columnName
-          }`;
+          }&limit=3600`;
+          console.log(url);
 
           const response = await api.get(url, "?");
 
@@ -467,22 +462,40 @@ export default {
       }
 
       const config = this.sensorConfigs[sensorType];
-      const processedData = {};
+      // If this is an update and we already have data
+      if (isUpdate && this.sensorData[sensorType][config.axes[0]]?.length > 0) {
+        config.axes.forEach((axis) => {
+          const newData = data.map((reading) => ({
+            x: new Date(reading.timestamp).getTime(),
+            y: this.extractSensorValue(sensorType, reading, axis),
+          }));
 
-      config.axes.forEach((axis) => {
-        processedData[axis] = data.map((reading) => ({
-          x: new Date(reading.timestamp).getTime(),
-          y: this.extractSensorValue(sensorType, reading, axis),
-        }));
-      });
+          // Get current data array
+          let currentData = this.sensorData[sensorType][axis] || [];
 
-      // Safety check before updating values
-      if (!this.sensorData[sensorType]) {
-        this.sensorData[sensorType] = {};
-      }
+          // Add new data points
+          currentData = [...currentData, ...newData];
 
-      if (!this.currentValues[sensorType]) {
-        this.currentValues[sensorType] = {};
+          // Keep only the last 300 data points (5 minutes at 1 data point per second)
+          // Adjust this number based on your needs
+          const maxDataPoints = 300;
+          if (currentData.length > maxDataPoints) {
+            currentData = currentData.slice(-maxDataPoints);
+          }
+
+          // Update the data
+          this.$set(this.sensorData[sensorType], axis, currentData);
+        });
+      } else {
+        // Initial data load
+        const processedData = {};
+        config.axes.forEach((axis) => {
+          processedData[axis] = data.map((reading) => ({
+            x: new Date(reading.timestamp).getTime(),
+            y: this.extractSensorValue(sensorType, reading, axis),
+          }));
+        });
+        this.sensorData[sensorType] = processedData;
       }
 
       // Update current values with latest reading
@@ -495,7 +508,6 @@ export default {
         );
       });
 
-      this.sensorData[sensorType] = processedData;
       this.updateMachineStatus(sensorType);
       this.chartKeys[sensorType] = Date.now();
     },
@@ -549,8 +561,8 @@ export default {
       await this.fetchHistoricalData();
 
       if (!this.dateRange && this.isMonitoring) {
-        this.updateTimer = setInterval(() => {
-          this.fetchLatestData();
+        this.updateTimer = setInterval(async () => {
+          await this.fetchLatestData();
         }, this.updateInterval);
       }
     },

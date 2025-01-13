@@ -280,7 +280,7 @@
           indicators
           class="human-detection-carousel"
           :wrap="true"
-          :interval="0"
+          dark
           @show="handleSlideShow"
         >
           <CCarouselItem

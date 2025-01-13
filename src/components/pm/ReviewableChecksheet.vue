@@ -363,66 +363,72 @@
           <div class="mt-2">Loading images...</div>
         </div>
 
-        <CCarousel
-          v-else
-          controls
-          indicators
-          class="human-detection-carousel"
-          :wrap="true"
-          :interval="0"
-          @show="handleSlideShow"
-        >
-          <CCarouselItem
-            v-for="(detection, index) in detections"
-            :key="detection._id"
-            :active="index"
+        <template v-else>
+          <div
+            v-if="!hasDetections || detections.length === 0"
+            class="no-detections p-5 text-center"
           >
             <img
-              :src="detection.imageUrl"
-              class="d-block w-100"
-              :alt="'Human Detection Image' + (index + 1)"
+              :src="require('@/assets/images/defaultImage.png')"
+              class="d-block mx-auto mb-3"
+              alt="No Images"
+              style="max-width: 200px"
             />
-            <CCarouselCaption class="d-none d-md-block detection-caption">
-              <div class="detection-details">
-                <h5>Image {{ index + 1 }} of {{ detections.length }}</h5>
-                <span class="detection-time">
-                  {{ detection.detectionTime }}
-                </span>
+            <h5 class="text-muted">No detection images available</h5>
+            <p class="text-muted small">
+              No human detection images were found for this time period.
+            </p>
+          </div>
+
+          <CCarousel
+            v-else
+            controls
+            indicators
+            class="human-detection-carousel"
+            :wrap="true"
+            dark
+          >
+            <CCarouselItem
+              v-for="(detection, index) in detections"
+              :key="detection._id"
+              :active="currentSlideIndex === index"
+            >
+              <div class="carousel-image-wrapper">
+                <img
+                  :src="detection.imageUrl"
+                  class="d-block w-100"
+                  :alt="'Human Detection Image ' + (index + 1)"
+                />
               </div>
-              <div class="meta-info">
-                <span class="camera">
-                  <CIcon icon="cil-camera" /> {{ detection.created_by }}
-                </span>
-                <span class="people">
-                  <CIcon icon="cil-people" />
-                  {{ detection.total_person }} person(s) detected
-                </span>
-              </div>
-              <div
-                v-if="detection.detected_face?.length"
-                class="faces-detected mt-2"
-              >
-                <span class="label">Faces detected: </span>
-                <span class="names">{{
-                  detection.detected_face.join(", ")
-                }}</span>
-              </div>
-            </CCarouselCaption>
-          </CCarouselItem>
-          <!-- Show default image if no images available -->
-          <CCarouselItem v-if="detections.length === 0">
-            <div class="no-detections">
-              <img
-                :src="require('@/assets/images/defaultImage.png')"
-                class="d-block w-100"
-                alt="Default Image"
-              />
-              <CCarouselCaption>
-                <h5>No detection images available</h5>
+              <CCarouselCaption class="d-none d-md-block detection-caption">
+                <div class="detection-details">
+                  <h5>Image {{ index + 1 }} of {{ detections.length }}</h5>
+                  <span class="detection-time">
+                    {{ detection.detectionTime }}
+                  </span>
+                </div>
+                <div class="meta-info">
+                  <span class="camera">
+                    <CIcon icon="cil-camera" /> {{ detection.created_by }}
+                  </span>
+                  <span class="people">
+                    <CIcon icon="cil-people" />
+                    {{ detection.total_person }} person(s) detected
+                  </span>
+                </div>
+                <div
+                  v-if="detection.detected_face?.length"
+                  class="faces-detected mt-2"
+                >
+                  <span class="label">Faces detected: </span>
+                  <span class="names">{{
+                    detection.detected_face.join(", ")
+                  }}</span>
+                </div>
               </CCarouselCaption>
-            </div>
-          </CCarouselItem>
-        </CCarousel>
+            </CCarouselItem>
+          </CCarousel>
+        </template>
       </CModalBody>
     </CModal>
 
@@ -626,8 +632,16 @@ export default {
       this.currentItem = null;
     },
     async openPhotoModal() {
+      console.log("Checksheet date formats:", {
+        date: this.checksheet.date,
+        created_dt: this.checksheet.created_dt,
+        rawChecksheet: this.checksheet,
+      });
       this.showPhotoModal = true;
-      await this.fetchDetections();
+      await this.fetchDetections({
+        checksheetDate: this.checksheet.created_dt,
+        timeWindowMinutes: 1440,
+      });
     },
     closePhotoModal() {
       this.showPhotoModal = false;
@@ -895,7 +909,10 @@ export default {
 
   async created() {
     await this.fetchPartsData();
-    await this.fetchDetections();
+    await this.fetchDetections({
+      checksheetDate: this.checksheet.created_dt,
+      timeWindowMinutes: 1440,
+    });
   },
 
   watch: {

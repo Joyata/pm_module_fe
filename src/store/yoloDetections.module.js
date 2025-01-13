@@ -27,28 +27,83 @@ export default {
   },
 
   actions: {
-    async fetchDetections({ commit, state }) {
-      // Don't fetch if already loading
+    async fetchDetections(
+      { commit, state },
+      { checksheetDate, timeWindowMinutes } = {}
+    ) {
       if (state.loading) return state.detections;
+
+      console.log("Fetch detections called with:", {
+        checksheetDate,
+        rawChecksheetDate: checksheetDate,
+        parsedChecksheetDate: checksheetDate ? new Date(checksheetDate) : null,
+        timeWindowMinutes,
+      });
 
       commit("SET_LOADING", true);
       try {
-        const response = await api.get("/rmq/carefull", "?");
+        const response = await api.get("/kanban/yolo-images", "?");
         console.log("YOLO detections response:", response);
 
         if (response?.data?.data) {
-          // Transform the data to include full image URLs
-          const detections = response.data.data.map((detection) => ({
+          // Transform the data to include full image URLs - using let instead of const
+          let detections = response.data.data.map((detection) => ({
             ...detection,
             imageUrl: `${process.env.VUE_APP_API_URL}/uploads/yolo/${detection.filename}`,
             detectionTime: new Date(detection.created_dt).toLocaleString(),
             total_person: detection["total person"],
+            created_dt: new Date(detection.created_dt),
           }));
 
-          // Sort detections by created_dt in describing order (newest first)
-          detections.sort(
-            (a, b) => new Date(b.created_dt) - new Date(a.created_dt)
-          );
+          // Filter detections based on checksheet date if provided
+          if (checksheetDate) {
+            const checksheetDateTime = new Date(checksheetDate);
+            const timeWindowMs = timeWindowMinutes * 60 * 1000;
+
+            console.log("Filtering detections with parameters:", {
+              checksheetDate: checksheetDateTime,
+              timeWindowMinutes,
+              windowStart: new Date(
+                checksheetDateTime.getTime() - timeWindowMs
+              ),
+              windowEnd: new Date(checksheetDateTime.getTime() + timeWindowMs),
+            });
+
+            // Filter detections within the time window
+            detections = detections.filter((detection) => {
+              const timeDiff = Math.abs(
+                detection.created_dt - checksheetDateTime
+              );
+              const isInWindow = timeDiff <= timeWindowMs;
+
+              if (isInWindow) {
+                console.log("Detection within window:", {
+                  detectionTime: detection.created_dt,
+                  timeDiffMinutes: timeDiff / (1000 * 60),
+                });
+              }
+
+              return isInWindow;
+            });
+
+            // Sort by time difference from checksheet creation time
+            detections = detections.sort((a, b) => {
+              const diffA = Math.abs(a.created_dt - checksheetDateTime);
+              const diffB = Math.abs(b.created_dt - checksheetDateTime);
+              return diffA - diffB;
+            });
+
+            // Take up to 20 images closest to the checksheet time
+            detections = detections.slice(0, 20);
+
+            console.log(
+              `Selected ${detections.length} detections within ${timeWindowMinutes} minutes of checksheet date`
+            );
+          } else {
+            // If no checksheet date provided, just take the most recent 20
+            detections = detections.sort((a, b) => b.created_dt - a.created_dt);
+            detections = detections.slice(0, 20);
+          }
 
           commit("SET_DETECTIONS", detections);
           commit("SET_INITIALIZED", true);

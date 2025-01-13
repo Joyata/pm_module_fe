@@ -116,24 +116,43 @@ export default {
         xaxis: {
           type: "datetime",
           labels: {
-            datetimeFormatter: {
-              year: "yyyy",
-              month: "MMM 'yy",
-              day: "dd MMM",
-              hour: "HH:mm",
+            formatter: function (value, timestamp, opts) {
+              return new Date(timestamp).toLocaleTimeString("en-US", {
+                hour12: false,
+                hour: "2-digit",
+                minute: "2-digit",
+                second: "2-digit",
+                fractionalSecondDigits: 3,
+              });
+            },
+            datetimeUTC: false,
+          },
+          tooltip: {
+            formatter: function (value) {
+              return new Date(value).toLocaleTimeString("en-US", {
+                hour12: false,
+                hour: "2-digit",
+                minute: "2-digit",
+                second: "2-digit",
+                fractionalSecondDigits: 3,
+              });
             },
           },
+          ...(this.dateRange && {
+            min: new Date(this.dateRange[0]).getTime(),
+            max: new Date(this.dateRange[1]).getTime(),
+          }),
         },
         yaxis: {
-          min: this.sensorConfig.min,
-          max: this.sensorConfig.max,
           tickAmount: 5,
+          decimalsInFloat: 2,
           labels: {
-            formatter: (value) => value.toFixed(1),
+            formatter: (value) => this.formatValue(value),
           },
           title: {
             text: `${this.sensorConfig.name} (${this.sensorConfig.unit})`,
           },
+          forceNiceScale: true, // This ensures nice round numbers for the scale
         },
         stroke: {
           curve: "smooth",
@@ -142,15 +161,31 @@ export default {
         legend: {
           show: true,
           position: "top",
+          onItemClick: {
+            toggleDataSeries: true,
+          },
+          onItemHover: {
+            highlightDataSeries: true,
+          },
         },
         tooltip: {
           x: {
-            format: "dd MMM yyyy HH:mm:ss",
+            formatter: function (value) {
+              return new Date(value).toLocaleTimeString("en-US", {
+                hour12: false,
+                year: "numeric",
+                month: "numeric",
+                day: "numeric",
+                hour: "2-digit",
+                minute: "2-digit",
+                second: "2-digit",
+                fractionalSecondDigits: 3,
+              });
+            },
           },
           y: {
-            formatter: (value, { series, seriesIndex, dataPointIndex, w }) => {
-              const axis = this.availableAxes[seriesIndex];
-              return `${value.toFixed(2)} ${this.getAxisUnit(axis)}`;
+            formatter: (value) => {
+              return this.formatValue(value) + " " + this.sensorConfig.unit;
             },
           },
           theme: "dark",
@@ -191,8 +226,12 @@ export default {
     },
 
     getMaxValue(axis) {
-      if (!this.sensorData[axis]) return "0.00";
-      return Math.max(...this.sensorData[axis].map((d) => d.y)).toFixed(2);
+      if (!this.sensorData[axis] || !this.sensorData[axis].length)
+        return "0.00";
+      const values = this.sensorData[axis]
+        .map((d) => d.y)
+        .filter((y) => y !== null && y !== undefined);
+      return values.length ? Math.max(...values).toFixed(2) : "0.00";
     },
 
     getSensorValueClass(axis, value) {
@@ -238,6 +277,12 @@ export default {
       });
 
       return thresholdLines;
+    },
+
+    formatValue(value) {
+      return value !== undefined && value !== null
+        ? Number(value).toFixed(2)
+        : "0.00";
     },
   },
 };
