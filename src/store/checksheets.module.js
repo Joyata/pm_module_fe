@@ -6,6 +6,7 @@ export default {
 
   state: {
     checksheets: [],
+    historyChecksheets: [],
     parts: {},
     selectedChecksheet: null,
     loading: false,
@@ -21,6 +22,10 @@ export default {
     SET_CHECKSHEETS(state, checksheets) {
       state.checksheets = checksheets;
       console.log("SET_CHECKSHEETS:", checksheets);
+    },
+
+    SET_PM_HISTORY(state, historyChecksheets) {
+      state.historyChecksheets = historyChecksheets;
     },
 
     SET_SELECTED_CHECKSHEET(state, checksheet) {
@@ -170,6 +175,81 @@ export default {
       }
     },
 
+    async fetchPMHistory({ commit }) {
+      commit("SET_LOADING", true);
+
+      try {
+        // Get history kanban for Team Leader's work orders
+        const response = await api.get(`/kanban/history-kanban`, "?");
+        console.log("History Kanban response:", response);
+
+        if (response?.data?.data) {
+          // Filter submissions for work orders created by this team leader
+          const submissions = response.data.data;
+
+          console.log("Work orders:", submissions);
+
+          // Fetch kanban details for all submissions
+          const kanbanPromises = [
+            ...new Set(submissions.map((s) => s.kanban_id)),
+          ].map((kanbanId) =>
+            api.get(`/kanban/list-kanban?id=${kanbanId}`, "?")
+          );
+
+          const kanbanResponses = await Promise.all(kanbanPromises);
+          const kanbanDetails = kanbanResponses.reduce((acc, response) => {
+            const kanban = response?.data?.data[0];
+            if (kanban) {
+              acc[kanban._id] = kanban;
+            }
+            return acc;
+          }, {});
+
+          // Format the checksheets data
+          const historyChecksheets = submissions.map((submission) => ({
+            _id: submission._id,
+            kanban_id: submission.kanban_id,
+            kanban_nm:
+              kanbanDetails[submission.kanban_id]?.kanban_nm ||
+              submission.kanban_id,
+            work_order_id: submission.work_order_id,
+            created_by: submission.created_by || submission.submitted_by, // Team member who submitted
+            created_dt: submission.created_dt || submission.submitted_dt,
+            team_member: submission.work_order?.user_id,
+            team_leader: submission.work_order?.created_by,
+            machine: {
+              machine_nm:
+                kanbanDetails[submission.kanban_id]?.machine?.machine_nm || "-",
+            },
+            itemcheck: submission.itemcheck.map((item) => ({
+              ...item,
+              _id: item.itemcheck_id,
+              filename: item.filename,
+              contentType: item.contentType,
+              value: item.value,
+              ocr_value: item.ocr_value,
+            })),
+            work_order: {
+              ...submission.work_order,
+              work_dt: submission.work_order?.work_dt,
+              review_status: submission.work_order?.review_status || "PENDING",
+            },
+            notes: submission.notes,
+          }));
+          commit("SET_PM_HISTORY", historyChecksheets);
+          console.log("Processed history checksheets:", historyChecksheets);
+          return historyChecksheets;
+        }
+      } catch (error) {
+        console.error("Error fetching checksheets:", error);
+        commit("SET_ERROR", error.message);
+        toast.error(error.message || "Failed to fetch history checksheets");
+        return [];
+      } finally {
+        commit("SET_LOADING", false);
+      }
+    },
+
     async fetchParts({ commit }, partIds) {
       try {
         console.log("fetchParts action called with IDs:", partIds);
@@ -245,7 +325,7 @@ export default {
     getPart: (state) => (partId) => state.parts[partId] || null,
 
     reviewedChecksheets: (state) => {
-      return state.checksheets.filter(
+      return state.historyChecksheets.filter(
         (checksheet) =>
           checksheet.work_order?.review_status === "APPROVED" ||
           checksheet.work_order?.review_status === "REJECTED"
